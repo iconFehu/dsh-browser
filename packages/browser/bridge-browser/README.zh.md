@@ -1,5 +1,7 @@
 # @yuxianglin/dsh-bridge-browser
 
+Windows Desktop 预构建安装及首次设置请参阅[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)。下方标准 web 命令需先下载完整 Windows Release 包并解压。
+
 [English](README.md) | 中文
 
 dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认证的 WebSocket 通道**（`/ext/bridge`），供 Chrome 扩展连接；把扩展调用投影到 dsh 0.1.2 Typert Remotes、按连接跟随 Session 与 Remote Event 流，并注册**纯文本**的 `browser_*` 工具集——经扩展在真实浏览器中读取页面、点击元素、填写表单、滚动与导航，登录态保留。侧边栏是对话入口，工具才是产品本体。
@@ -24,14 +26,14 @@ dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认�
 远程安装器会下载一个由脚本托管的 workspace，构建插件，并将它的官方 bundle 注册到本机 dsh 的 `web` profile。该方式无需 Git，也无需提前 clone：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
+curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
 cd ~/.dsh/dsh-browser && pnpm start
 ```
 
 Windows 请改用 PowerShell 安装器：
 
 ```powershell
-$s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
 cd $HOME\.dsh\dsh-browser; pnpm start
 ```
 

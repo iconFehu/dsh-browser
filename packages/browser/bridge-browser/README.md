@@ -1,5 +1,7 @@
 # @yuxianglin/dsh-bridge-browser
 
+For Windows Desktop prebuilt installation, see the [main setup guide](https://github.com/iconFehu/dsh-browser#quick-install). Download and extract the complete Windows Release bundle before using the standard web command below.
+
 English | [中文](README.zh.md)
 
 The **browser-operation bridge** for dsh: mounts a token-authenticated WebSocket carrier (`/ext/bridge`) that the Chrome extension connects to, projects its calls onto dsh 0.1.2 Typert Remotes, follows Session and Remote Event streams per connection, and registers the text-only `browser_*` tool set that reads and operates the user's active tab through the extension — click elements, fill forms, scroll, and navigate in the real browser, login state preserved. The side panel is the conversation entry; the tools are the product.
@@ -24,14 +26,14 @@ Workspace grouping is best-effort. If the composition has no workspace domain, d
 The remote installer downloads an installer-managed workspace, builds the plugin, and registers its official bundle in the local dsh `web` profile. It requires neither Git nor a local clone:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
+curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
 cd ~/.dsh/dsh-browser && pnpm start
 ```
 
 On Windows, run the PowerShell installer instead:
 
 ```powershell
-$s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
 cd $HOME\.dsh\dsh-browser; pnpm start
 ```
 

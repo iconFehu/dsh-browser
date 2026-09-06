@@ -1,16 +1,16 @@
 #!/bin/bash
 # dsh-browser 一键安装：支持远程托管安装和本地 checkout 安装。
 # dsh-browser one-command install: supports both managed remote installs and local checkout installs.
-# 之后无需任何配置：扩展自动探测本机 dsh 并连接（回环免 token）。
-# No further configuration is required: the extension discovers local dsh automatically and loopback connections require no token.
+# 标准 web 源码安装；Desktop 还需启用兼容模式与浏览器访问。
+# Standard web source installation; Desktop additionally requires compatibility mode and browser access.
 set -euo pipefail
 
-REPOSITORY="Lum1104/dsh-browser"
-REMOTE_REF="main"
+REPOSITORY="iconFehu/dsh-browser"
+REMOTE_REF="v0.1.4"
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
 MANAGED_ROOT="$DSH_HOME_DIR/dsh-browser"
 MANAGED_MARKER="$MANAGED_ROOT/.managed-by-install-sh"
-ARCHIVE_URL="https://github.com/$REPOSITORY/archive/refs/heads/${REMOTE_REF}.tar.gz"
+ARCHIVE_URL="https://github.com/$REPOSITORY/archive/refs/tags/${REMOTE_REF}.tar.gz"
 BOOTSTRAP_TMP=""
 
 print_step() {
@@ -420,4 +420,4 @@ printf '• 启动固定版本：cd %q && pnpm start\n' "$ROOT"
 printf '   Start the pinned version: cd %q && pnpm start\n' "$ROOT"
 print_pair "• 0.1.2 发布后也可启动精确版本：npx @deepseek-ai/dsh@0.1.2 web" "Or, once published, start the exact supported version: npx @deepseek-ai/dsh@0.1.2 web"
 printf '\n'
-print_pair "如果用得顺手，欢迎在 GitHub 点个 Star 支持我们：https://github.com/Lum1104/dsh-browser" "If dsh-browser is useful to you, we'd appreciate a Star on GitHub: https://github.com/Lum1104/dsh-browser"
+print_pair "如果用得顺手，欢迎在 GitHub 点个 Star 支持我们：https://github.com/iconFehu/dsh-browser" "If dsh-browser is useful to you, we'd appreciate a Star on GitHub: https://github.com/iconFehu/dsh-browser"

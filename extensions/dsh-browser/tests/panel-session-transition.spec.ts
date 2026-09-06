@@ -67,6 +67,7 @@ describe('panel session transitions', () => {
         .mockResolvedValueOnce(undefined)
         .mockRejectedValueOnce(new Error('runtime port unavailable')),
       updateSettings: vi.fn(async () => {}),
+      rediscover: vi.fn(async () => {}),
       requestStatus: vi.fn(async () => {}),
     }
 

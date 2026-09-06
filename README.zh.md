@@ -15,24 +15,29 @@
 
 ## 快速安装
 
-本项目不能只使用标准的 `dsh plugin` 命令安装。它同时包含 dsh bridge plugin 和浏览器扩展。一行安装器目前会安装 Chrome 构建。
+### Windows + DSH Desktop（推荐）
 
-macOS 与 Linux：
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
-```
-
-Windows（PowerShell）：
+从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载 **dsh-browser-windows.zip**，完整解压后运行：
 
 ```powershell
-$s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-安装器打开 `chrome://extensions` 后，请按提示加载或重新加载 **dsh 浏览器助手**。如果 dsh 已经在运行，安装完成后请重启。前置要求、启动命令、更新方式和开发者安装详见[详细安装与使用](#详细安装与使用)。
+安装器默认使用预构建扩展，不需要 Git、Node 或 pnpm，不会重复注册 Desktop 的 bridge。首次在 Chrome 的 `chrome://extensions` 开启开发者模式，点击“加载已解压的扩展程序”，选择安装器打印的目录。
 
-> [!IMPORTANT]
-> npm 上未加 scope 的 [`dsh-browser`](https://www.npmjs.com/package/dsh-browser) 包属于另一个项目，与本仓库无关。本项目目前没有发布 npm 包，请使用上方安装器。
+启动 DSH Desktop，在设置中选择**兼容模式**并开启**浏览器访问**。扩展桥地址留空，打开侧边栏自动连接。Chrome 首次加载和 Desktop 访问设置需要用户操作。
+
+### macOS / Linux 与标准 dsh web
+
+保留源码安装，要求 Node.js `^22.19` 或 `>=24`、pnpm，Chrome 116+ 或 Firefox 140+：
+
+```sh
+curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
+```
+
+Windows 标准 web 在完整安装包中运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web`。它需要开发依赖并构建、注册 web profile 的 bridge。
+
+本项目没有发布名为 `dsh-browser` 的 npm 包。首次发布之前，请使用随代码交付的本地预构建 ZIP。
 
 ## 性能基准
 
@@ -80,37 +85,24 @@ scripts/install.ps1
 
 ## 详细安装与使用
 
-前置要求：Node.js `^22.19` 或 `>=24`、Corepack/pnpm，以及 Chrome 116+ 或 Firefox 140+。Windows 还需要系统自带的 Windows PowerShell 5.1，或 PowerShell 7+。
-
 ### 安装或更新
 
-托管安装请运行：
+Windows Desktop 要求 Windows PowerShell 5.1+、Chrome 116+ 和提供兼容 bridge 的 DSH Desktop。当前现场确认 Desktop 2.0.5 使用 `43120` 起始端口；扩展自动检查 `43120–43152`，然后检查历史端口及标准 web。上次握手成功的 Desktop 地址优先，手动地址优先于全部自动发现。
+
+安装器默认写入 `~/.dsh/browser-extension`，支持 `DSH_HOME` 或 `-DshHome` 指定根目录。完整安装包可离线使用；安装前校验 SHA-256 和扩展文件，更新前备份旧目录，失败自动恢复。成功后的备份路径会打印出来。遇到非托管目录会停止，不覆盖用户源码。
+
+更新时重新下载完整 ZIP 并运行安装器，然后在 Chrome 点击“重新加载”。扩展中的更新提示检查 GitHub 已发布 Release，不以 main 分支代替发布版本。每份安装器固定自身对应版本，`-Version` 可为 Desktop 显式指定其他发布版本。
+
+源码开发安装：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
-```
-
-Windows 请运行：
-
-```powershell
-$s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
-```
-
-安装器会下载 `main`、构建并注册桥插件、把 Chrome 扩展构建到 `~/.dsh/browser-extension`，然后打开 `chrome://extensions`。首次安装时，请把该目录作为已解压扩展加载；更新时点击**重新加载**。如果 dsh 已在运行，请重启。
-
-`scripts/install.sh` 覆盖 macOS 与 Linux，`scripts/install.ps1` 覆盖 Windows；两者写入同一个托管工作区和同一份安装元数据。当系统提供剪贴板工具（`pbcopy`、`wl-copy`、`xclip`、`xsel` 或 PowerShell 的 `Set-Clipboard`）时，安装器会把扩展路径复制到剪贴板；无论是否复制成功都会打印该路径。若未检测到 Chrome/Chromium，安装器会打印对应的安装命令；设置 `DSH_INSTALL_BROWSER=1` 可让安装器尝试自动安装。
-
-Windows 命令先下载 `install.ps1` 再执行，而不是管道给 `Invoke-Expression`：脚本是带 BOM 的 UTF-8，Windows PowerShell 依赖 BOM 才能正确显示中文，而 `Invoke-Expression` 无法处理开头的 BOM。
-
-如需从源码 checkout 安装当前分支：
-
-```sh
-git clone https://github.com/Lum1104/dsh-browser.git
+git clone https://github.com/iconFehu/dsh-browser.git
 cd dsh-browser
-./scripts/install.sh
+pnpm install --frozen-lockfile
+pnpm build
 ```
 
-Windows 请在 checkout 中运行 `.\scripts\install.ps1`。拉取或切换版本后，请重新运行安装器并重新加载扩展。
+Windows 源码 web 安装运行 `.\scripts\install.ps1 -Runtime Web`；macOS/Linux 运行 `./scripts/install.sh`。本地 checkout 使用本地源码；远程安装固定发布标签。Desktop 本地打包运行 `.\scripts\package-release.ps1`，然后使用 `release` 中的完整包。
 
 ### Firefox 源码构建
 
@@ -141,11 +133,14 @@ Chrome 本机使用无需配置；Firefox 需要填写上述本地桥 token。�
 
 ## 故障排查
 
-**侧边栏一直显示「未连接」**
+- 未发现服务：启动 Desktop；自定义范围外端口在扩展设置中手动填写。
+- 403：在 Desktop 中启用兼容模式和浏览器访问。扩展不会绕过此访问控制。
+- 404：服务没有提供 bridge，检查 Desktop 版本或标准 web 的插件注册。
+- 认证失败：检查桥 Token；握手超时：检查宿主与扩展协议兼容性。
+- 被另一浏览器接管：自动重试停止，需要主动点击“重新检测”才能重新获取连接。
+- 设置页显示当前地址、重新检测按钮和脱敏诊断。诊断不包含 Token、地址查询参数或页面内容。
 
-- 确认本机 dsh web 正在运行（默认 `http://127.0.0.1:3080`）。
-- 确认桥接已加载：浏览器打开 `http://127.0.0.1:3080/ext/bridge-config`，应返回类似 `{"wsUrl":"ws://127.0.0.1:3080/ext/bridge"}` 的 JSON。如果返回的是网页而不是 JSON，说明当前运行的 dsh 早于桥接注册——重启 dsh 并刷新页面即可，扩展会自动重连。
-- 扩展会自动探测 3080/3081/3090/14389 端口。若 dsh 运行在其它端口，或使用 `--host 0.0.0.0` 远程部署，请在面板设置中填写地址与桥接 token。Firefox 始终需要 token。
+Desktop 模式不需要运行 `pnpm start`。下方源码启动命令仅适用于标准 web。
 
 ## 开发
 

@@ -1,5 +1,7 @@
 # dsh 浏览器操作扩展（Chrome 与 Firefox MV3）
 
+Windows Desktop 预构建安装及首次设置请参阅[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)。下方标准 web 命令需先下载完整 Windows Release 包并解压。
+
 [English](README.md) | 中文
 
 dsh 的**浏览器操作端**：让模型直接读取并操作你在浏览器里打开的页面——抓取内容、点击元素、填写表单、滚动与导航，全部在真实页面执行、登录态保留。侧边栏面板是与模型对话的入口。
@@ -55,13 +57,13 @@ pnpm --filter dsh-browser-extension run test
 1. **构建并安装扩展**：
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
+   curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
    ```
 
    Windows 请改在 PowerShell 中运行：
 
    ```powershell
-   $s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
    ```
 
    脚本会把托管 workspace 下载到 `~/.dsh/dsh-browser`，构建桥插件，把它的官方 bundle 注册到本机 dsh 的 `web` profile，再构建扩展并把产物复制到稳定目录 `~/.dsh/browser-extension`，然后打开 `chrome://extensions`。开启开发者模式，选择「加载已解压的扩展程序」，加载扩展目录。再次运行该命令会更新托管安装。
@@ -69,7 +71,7 @@ pnpm --filter dsh-browser-extension run test
    clone 得到的 checkout 也使用同一个安装器，而且不会下载或覆盖源码：
 
    ```sh
-   git clone https://github.com/Lum1104/dsh-browser.git
+   git clone https://github.com/iconFehu/dsh-browser.git
    cd dsh-browser
    ./scripts/install.sh
    ```

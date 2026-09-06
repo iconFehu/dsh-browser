@@ -15,24 +15,29 @@ Browser operation remains text-only: pages become structured text with a numbere
 
 ## Quick install
 
-The standard `dsh plugin` command alone cannot install this project. The integration contains both a dsh bridge plugin and a browser extension. The one-line installer currently sets up the Chrome build.
+### Windows + DSH Desktop (recommended)
 
-macOS and Linux:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
-```
-
-Windows, in PowerShell:
+Download **dsh-browser-windows.zip** from [Releases](https://github.com/iconFehu/dsh-browser/releases), extract the entire bundle, then run:
 
 ```powershell
-$s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-When the installer opens `chrome://extensions`, follow its instructions to load or reload **dsh Browser Assistant**. If dsh is already running, restart it after installation. See [Detailed installation and usage](#detailed-installation-and-usage) for prerequisites, startup commands, updates, and developer installation.
+Desktop installation uses prebuilt files without Git, Node or pnpm and does not register another Desktop bridge. On first use, enable developer mode at `chrome://extensions`, choose Load unpacked, and select the directory printed by the installer.
 
-> [!IMPORTANT]
-> The unscoped [`dsh-browser`](https://www.npmjs.com/package/dsh-browser) package on npm belongs to a different project and is not affiliated with this repository. This project is not currently published as an npm package; use the installer above.
+Start DSH Desktop, select **compatibility mode**, and enable **browser access** in its settings. Leave the extension bridge address empty and open its sidebar to connect automatically. First-time Chrome loading and Desktop access settings require user interaction.
+
+### macOS / Linux and standard dsh web
+
+Source installation requires Node.js `^22.19` or `>=24`, pnpm, and Chrome 116+ or Firefox 140+:
+
+```sh
+curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
+```
+
+For standard web on Windows, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web` from the complete bundle. It requires development dependencies and builds/registers the bridge in the web profile.
+
+This project does not publish the unscoped `dsh-browser` npm package. Before the first release is published, use the locally delivered prebuilt ZIP.
 
 ## Performance
 
@@ -80,37 +85,24 @@ scripts/install.ps1
 
 ## Detailed installation and usage
 
-Requirements: Node.js `^22.19` or `>=24`, Corepack/pnpm, and Chrome 116+ or Firefox 140+. Windows additionally needs Windows PowerShell 5.1, which ships with Windows, or PowerShell 7+.
-
 ### Install or update
 
-For a managed installation, run:
+Windows Desktop installation requires Windows PowerShell 5.1+, Chrome 116+, and a compatible DSH Desktop bridge. Local inspection confirmed that Desktop 2.0.5 starts at port `43120`. Discovery checks `43120–43152`, then historical ports and standard web; the last authenticated Desktop address is preferred. A manual address overrides discovery.
+
+The default directory is `~/.dsh/browser-extension`; set `DSH_HOME` or `-DshHome` to change its root. A complete bundle works offline. The installer validates SHA-256 and required extension files, backs up existing managed files, and restores them on failure. Successful updates retain and print the backup path. Unmanaged directories are preserved and cause installation to stop.
+
+To update, download and extract the complete ZIP, rerun the installer, and click Reload in Chrome. The extension checks published GitHub Releases rather than main. Each installer pins its release; Desktop users can explicitly select another release with `-Version`.
+
+Source development:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
-```
-
-or, on Windows:
-
-```powershell
-$s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
-```
-
-The installer downloads `main`, builds and registers the bridge plugin, builds the Chrome extension into `~/.dsh/browser-extension`, and opens `chrome://extensions`. On the first install, load that directory as an unpacked extension; on updates, click **Reload**. Restart dsh if it is already running.
-
-`scripts/install.sh` covers macOS and Linux, and `scripts/install.ps1` covers Windows; both write the same managed workspace and the same install metadata. The installer copies the extension path to the clipboard when a clipboard tool is available (`pbcopy`, `wl-copy`, `xclip`, `xsel`, or PowerShell's `Set-Clipboard`), and prints the path either way. When no Chrome or Chromium install is found, it prints the command that installs one; set `DSH_INSTALL_BROWSER=1` to let the installer attempt that install itself.
-
-The Windows command downloads `install.ps1` and runs it rather than piping it into `Invoke-Expression`: the script is UTF-8 with a byte order mark so Windows PowerShell renders its Chinese output, and `Invoke-Expression` rejects a leading mark.
-
-To install the current branch from a source checkout instead:
-
-```sh
-git clone https://github.com/Lum1104/dsh-browser.git
+git clone https://github.com/iconFehu/dsh-browser.git
 cd dsh-browser
-./scripts/install.sh
+pnpm install --frozen-lockfile
+pnpm build
 ```
 
-On Windows, run `.\scripts\install.ps1` from the checkout instead. After pulling or switching revisions, rerun the installer and reload the extension.
+For source web installation on Windows run `.\scripts\install.ps1 -Runtime Web`; on macOS/Linux run `./scripts/install.sh`. Local checkouts use their own source; remote installations pin a release tag. To package Desktop locally, run `.\scripts\package-release.ps1` and use the complete bundle in `release`.
 
 ### Firefox source build
 
@@ -141,11 +133,14 @@ Local Chrome use requires no configuration; Firefox requires the local bridge to
 
 ## Troubleshooting
 
-**Side panel stays "Not connected"**
+- No service found: start Desktop, or manually enter a custom port outside the discovery range.
+- HTTP 403: enable Desktop compatibility mode and browser access. The extension does not bypass this control.
+- HTTP 404: check Desktop compatibility or register the bridge plugin for standard web.
+- Authentication failure: check the bridge token. Handshake timeout: check host/extension compatibility.
+- Replaced connection: automatic retry stops; use Detect again to explicitly reclaim the bridge.
+- Settings show the current address, retry and redacted diagnostics. Reports omit tokens, URL queries and page content.
 
-- Make sure dsh web is running locally (default `http://127.0.0.1:3080`).
-- Verify the bridge is loaded: open `http://127.0.0.1:3080/ext/bridge-config`. It should return JSON such as `{"wsUrl":"ws://127.0.0.1:3080/ext/bridge"}`. If it returns a web page instead of JSON, the running dsh predates the bridge registration — restart dsh and refresh the page; the extension reconnects on its own.
-- The extension probes ports 3080, 3081, 3090, and 14389 automatically. If dsh runs on another port — or you use a remote `--host 0.0.0.0` deployment — set the address (and bridge token) in the panel settings. Firefox always requires the token.
+Desktop does not require `pnpm start`. Source startup commands apply only to standard web.
 
 ## Development
 

@@ -21,9 +21,9 @@ describe('extension update checks', () => {
     expect(() => compareExtensionVersions('1.0.0-beta', '1.0.0')).toThrow('invalid extension version')
   })
 
-  it('reports a newer main-branch manifest', async () => {
+  it('reports a newer published release', async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(
-      JSON.stringify({ version: '0.3.0' }),
+      JSON.stringify({ tag_name: 'v0.3.0' }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     ))
 
@@ -104,11 +104,11 @@ describe('extension update checks', () => {
 
   it('builds a PowerShell command for a Windows checkout', () => {
     expect(checkoutInstallCommand('C:\\Users\\example\\My Checkout'))
-      .toBe("cd 'C:\\Users\\example\\My Checkout'; .\\scripts\\install.ps1")
+      .toBe("cd 'C:\\Users\\example\\My Checkout'; .\\scripts\\install.ps1 -Runtime Web")
     expect(checkoutInstallCommand("C:\\Users\\example\\dev's checkout"))
-      .toBe("cd 'C:\\Users\\example\\dev''s checkout'; .\\scripts\\install.ps1")
+      .toBe("cd 'C:\\Users\\example\\dev''s checkout'; .\\scripts\\install.ps1 -Runtime Web")
     expect(checkoutInstallCommand('\\\\build\\share\\dsh-browser'))
-      .toBe("cd '\\\\build\\share\\dsh-browser'; .\\scripts\\install.ps1")
+      .toBe("cd '\\\\build\\share\\dsh-browser'; .\\scripts\\install.ps1 -Runtime Web")
   })
 
   it('picks the managed installer that matches the running platform', () => {
@@ -135,7 +135,7 @@ describe('extension update checks', () => {
 
   it('keeps the Windows installer writing the same install provenance', () => {
     const extensionRoot = process.cwd()
-    const installerPath = `${extensionRoot}/../../scripts/install.ps1`
+    const installerPath = `${extensionRoot}/../../scripts/install-web.ps1`
     const installer = readFileSync(installerPath, 'utf8')
 
     // Windows PowerShell decodes a BOM-less script with the machine's ANSI codepage, which
@@ -145,6 +145,6 @@ describe('extension update checks', () => {
     expect(installer).toContain("{ 'managed' } else { 'checkout' }")
     expect(installer).toContain("Join-Path $DistDir 'install-info.json'")
     expect(installer).toContain('schemaVersion = 1')
-    expect(WINDOWS_UPDATE_COMMAND).toContain('scripts/install.ps1')
+    expect(WINDOWS_UPDATE_COMMAND).toContain('dsh-browser-windows.zip')
   })
 })

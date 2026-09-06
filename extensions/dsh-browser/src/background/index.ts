@@ -38,7 +38,8 @@ import {
   type RespondResult,
 } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import type { ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
-import { BRIDGE_CONFIG_PATH, BRIDGE_PATH } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+import { BRIDGE_PATH } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+import { discoverLocalBridge, inspectBridge, safeAddress, DESKTOP_PORTS, type ConnectionDiagnostic } from './discovery.ts'
 import { BridgeClient, type BridgeState } from './bridge.ts'
 import { createRpc } from './rpc.ts'
 import {
@@ -101,51 +102,28 @@ const SETTINGS_DEFAULTS: Settings = {
   autoResumeSession: true,
 }
 
-/**
- * 自动探测的候选端口：
- * - dsh web（CLI）默认 3080，端口被占时依次回退 3081 / 3090；
- * - DSH Desktop 默认由系统随机分配本地 Web 端口（`dsh-desktop.port: 0`），
- *   用户指南推荐固定为 43189（见 deepseek-harness-desktop docs/user-guide）；
- * - 14389 为历史桌面应用端口，保留兼容旧版。
- */
-const DISCOVERY_PORTS = [3080, 3081, 3090, 14389, 43189]
 const LEGACY_LOCAL_URL = 'ws://127.0.0.1:3080'
-
-/** 探测本机 dsh 的桥地址：fetch /ext/bridge-config 直到成功。 */
-async function discoverBridge(shouldContinue: () => boolean = () => true): Promise<string | undefined> {
-  for (const port of DISCOVERY_PORTS) {
-    if (!shouldContinue()) return undefined
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/ext/bridge-config`, {
-        signal: AbortSignal.timeout(1_500),
-      })
-      if (!shouldContinue()) return undefined
-      if (!response.ok) continue
-      const body = await response.json() as { wsUrl?: unknown }
-      if (typeof body.wsUrl === 'string' && body.wsUrl.startsWith('ws://')) return body.wsUrl
-    } catch {
-      // 该端口没有 dsh 或未挂桥：试下一个。
-    }
-  }
-  return undefined
+let diagnostic: ConnectionDiagnostic = { code: 'discovering' }
+let currentAddress = ''
+let lastDesktopAddress: string | undefined
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+let discoveryAttempt = 0
+function scheduleDiscovery(): void {
+  if (retryTimer !== undefined || panelPorts.size === 0) return
+  retryTimer = setTimeout(() => {
+    retryTimer = undefined
+    if (panelPorts.size === 0 || bridge?.state === 'connected' || diagnostic.code === 'replaced') return
+    if (bridge?.state === 'connecting') { scheduleDiscovery(); return }
+    void startBridge()
+  }, Math.min(30_000, 1000 * 2 ** Math.min(discoveryAttempt++, 5)))
 }
-
-/** Avoid opening a noisy loopback WebSocket until the local bridge responds. */
 async function probeBridge(url: string): Promise<boolean> {
-  try {
-    const target = new URL(url)
-    if (target.hostname !== '127.0.0.1') return true
-    target.protocol = target.protocol === 'wss:' ? 'https:' : 'http:'
-    target.pathname = BRIDGE_CONFIG_PATH
-    target.search = ''
-    target.hash = ''
-    const response = await fetch(target, { signal: AbortSignal.timeout(1_500) })
-    if (!response.ok) return false
-    const body = await response.json() as { wsUrl?: unknown }
-    return typeof body.wsUrl === 'string' && body.wsUrl.startsWith('ws://')
-  } catch {
-    return false
-  }
+  if (new URL(url).hostname !== '127.0.0.1') return true
+  const revision = bridgeStartRevision
+  const result = await inspectBridge(url)
+  if (revision !== bridgeStartRevision || url !== currentAddress) return false
+  if (result.code !== 'connected') { diagnostic = result; broadcastStatus() }
+  return result.code === 'connected'
 }
 
 const STORAGE_KEY = 'dshSettings'
@@ -224,7 +202,8 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 async function loadSettings(): Promise<Settings> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY)
+  const stored = await chrome.storage.local.get([STORAGE_KEY, 'lastDesktopAddress'])
+  lastDesktopAddress = stored.lastDesktopAddress as string | undefined
   const loaded = normalizeSettings({ ...SETTINGS_DEFAULTS, ...(stored[STORAGE_KEY] as Partial<Settings> | undefined) })
   if (loaded.bridgeUrl === LEGACY_LOCAL_URL || loaded.bridgeUrl === `${LEGACY_LOCAL_URL}/`) {
     loaded.bridgeUrl = ''
@@ -270,7 +249,7 @@ function disarmBridgeKeepalive(): void {
 }
 
 function broadcastStatus(): void {
-  const payload = { type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps }
+  const payload = { type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps, diagnostic, address: safeAddress(currentAddress) }
   for (const port of panelPorts) {
     try { port.postMessage(payload) } catch { /* port already closed */ }
   }
@@ -1050,10 +1029,18 @@ function cancelAllToolCalls(): void {
 /** (Re)start the bridge with the current settings. 零配置：地址留空时自动探测；回环连接无需 token。 */
 async function startBridge(): Promise<void> {
   const revision = ++bridgeStartRevision
+  if (retryTimer !== undefined) clearTimeout(retryTimer)
+  retryTimer = undefined
   if (panelPorts.size === 0) return
+  diagnostic = { code: 'discovering' }
+  bridge?.stop()
+  caps = null
   let url = settings.bridgeUrl
   if (url === '') {
-    url = await discoverBridge(() => revision === bridgeStartRevision && panelPorts.size > 0) ?? ''
+    const result = await discoverLocalBridge(lastDesktopAddress, () => revision === bridgeStartRevision && panelPorts.size > 0)
+    if (revision !== bridgeStartRevision || panelPorts.size === 0) return
+    diagnostic = result.code === 'connected' ? { code: 'discovering', address: result.address } : result
+    url = result.code === 'connected' ? result.address ?? '' : ''
   }
   // Discovery is asynchronous. A panel may have closed or a newer settings
   // update may have started while its fetches were in flight.
@@ -1062,7 +1049,9 @@ async function startBridge(): Promise<void> {
     bridge?.stop()
     bridge = null
     rpc = null
+    currentAddress = ''
     broadcastStatus()
+    scheduleDiscovery()
     return
   }
   // 手动填的地址常只有主机部分（如 ws://127.0.0.1:3080）；桥路径是协议
@@ -1070,13 +1059,27 @@ async function startBridge(): Promise<void> {
   try {
     const parsed = new URL(url)
     if (parsed.pathname === '' || parsed.pathname === '/') parsed.pathname = BRIDGE_PATH
+    if (!['ws:', 'wss:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Invalid bridge URL')
     url = parsed.toString()
   } catch {
-    // 非法 URL 原样交给 WebSocket 构造函数报错。
+    diagnostic = { code: 'invalid-response' }
+    currentAddress = ''
+    bridge?.stop()
+    broadcastStatus()
+    return
   }
+  currentAddress = url
   if (bridge === null) {
     const client = new BridgeClient({
+      onDiagnostic: (code) => { diagnostic = { code, address: safeAddress(currentAddress) }; broadcastStatus() },
       onStateChange: (state) => {
+        if (state === 'connected') {
+          diagnostic = { code: 'connected', address: safeAddress(currentAddress) }
+          discoveryAttempt = 0
+          if (retryTimer !== undefined) clearTimeout(retryTimer)
+          retryTimer = undefined
+        }
+        if (state === 'reconnecting' && settings.bridgeUrl === '') scheduleDiscovery()
         if (state !== 'connected') {
           cancelAllToolCalls()
           interactionResponses.failAll(responseMessages().disconnected)
@@ -1098,6 +1101,10 @@ async function startBridge(): Promise<void> {
       },
       onHelloOk: (negotiated) => {
         caps = negotiated
+        if (settings.bridgeUrl === '' && DESKTOP_PORTS.includes(Number(new URL(currentAddress).port))) {
+          lastDesktopAddress = currentAddress
+          void chrome.storage.local.set({ lastDesktopAddress }).catch(() => {})
+        }
         broadcastStatus()
         void pushBudgetToControlledTab(negotiated)
       },
@@ -1156,7 +1163,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (!panelPorts.has(port)) return
     if (bridge === null || bridge.state === 'stopped') return startBridge()
   })
-  try { port.postMessage({ type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps }) } catch { /* port closed */ }
+  try { port.postMessage({ type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps, diagnostic, address: safeAddress(currentAddress) }) } catch { /* port closed */ }
   void affinityReady.then(async () => {
     await syncActiveTab()
     try { port.postMessage({ type: 'tab-affinity', state: tabAffinity.snapshot() }) } catch { /* port closed */ }
@@ -1369,9 +1376,14 @@ chrome.runtime.onConnect.addListener((port) => {
         })
         break
       }
+      case 'rediscover':
+        diagnostic = { code: 'discovering' }
+        discoveryAttempt = 0
+        void settingsReady.then(() => startBridge())
+        break
       case 'request-status':
         try {
-          port.postMessage({ type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps })
+          port.postMessage({ type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps, diagnostic, address: safeAddress(currentAddress) })
           port.postMessage({ type: 'tab-affinity', state: tabAffinity.snapshot() })
           const statusWindowId = panelWindows.get(port)
           if (statusWindowId !== undefined) {

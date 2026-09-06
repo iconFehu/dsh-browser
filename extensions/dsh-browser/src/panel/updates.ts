@@ -1,25 +1,20 @@
 /**
  * Release checks for the unpacked browser extension.
  *
- * The managed installer follows the repository's main branch, so that
- * branch's manifest is the update source of truth. The check is deliberately
+ * Published releases are the update source of truth. The check is deliberately
  * read-only: Chrome does not let an unpacked extension replace itself.
  */
 
 export const UPDATE_MANIFEST_URL =
-  'https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/extensions/dsh-browser/manifest.json'
+  'https://api.github.com/repos/iconFehu/dsh-browser/releases/latest'
 
 export const UPDATE_COMMAND =
-  'curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash'
+  'curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash'
 
-/**
- * install.ps1 carries a UTF-8 BOM so Windows PowerShell renders its Chinese half, and a
- * leading BOM is exactly what Invoke-Expression refuses, so the file is downloaded and run.
- */
 export const WINDOWS_UPDATE_COMMAND =
-  '$s="$env:TEMP\\dsh-install.ps1"; '
-  + 'irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; '
-  + 'powershell -NoProfile -ExecutionPolicy Bypass -File $s'
+  '$d=Join-Path $env:TEMP ([guid]::NewGuid().ToString()); New-Item -ItemType Directory -Path $d | Out-Null; '
+  + '$z=Join-Path $d "bundle.zip"; irm https://github.com/iconFehu/dsh-browser/releases/latest/download/dsh-browser-windows.zip -OutFile $z; '
+  + 'Expand-Archive -LiteralPath $z -DestinationPath $d; powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $d "install.ps1")'
 
 export interface ExtensionUpdateResult {
   currentVersion: string
@@ -85,7 +80,7 @@ function powerShellQuote(value: string): string {
  */
 export function checkoutInstallCommand(sourceRoot: string): string {
   if (isWindowsPath(sourceRoot)) {
-    return `cd ${powerShellQuote(sourceRoot)}; .\\scripts\\install.ps1`
+    return `cd ${powerShellQuote(sourceRoot)}; .\\scripts\\install.ps1 -Runtime Web`
   }
   return `cd ${shellQuote(sourceRoot)} && ./scripts/install.sh`
 }
@@ -116,7 +111,7 @@ export function compareExtensionVersions(left: string, right: string): number {
   return 0
 }
 
-/** Fetch the main-branch manifest and compare it with the running extension. */
+/** Fetch the latest published release and compare it with the running extension. */
 export async function checkForExtensionUpdate(
   currentVersion: string,
   request: typeof fetch = fetch,
@@ -125,7 +120,8 @@ export async function checkForExtensionUpdate(
   const response = await request(UPDATE_MANIFEST_URL, { cache: 'no-store' })
   if (!response.ok) throw new Error(`update manifest request failed (${response.status})`)
 
-  const manifest = await response.json() as { version?: unknown }
+  const release = await response.json() as { tag_name?: unknown; version?: unknown }
+  const manifest = { version: typeof release.tag_name === 'string' ? release.tag_name.replace(/^v/, '') : release.version }
   if (typeof manifest.version !== 'string') throw new Error('update manifest has no version')
   versionParts(manifest.version)
 

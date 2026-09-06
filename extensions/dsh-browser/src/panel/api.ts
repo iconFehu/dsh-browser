@@ -7,6 +7,7 @@
 
 import type { BridgeCaps, RespondResult } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import type { ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+import type { ConnectionDiagnostic } from '../background/discovery.ts'
 import type { BridgeState } from '../background/bridge.ts'
 import type { Settings } from '../background/index.ts'
 import type { TabAffinityDecision, TabAffinityState } from '../background/tab-affinity.ts'
@@ -41,6 +42,8 @@ interface RespondResultMessage {
 
 interface StatusMessage {
   type: 'status'
+  diagnostic?: ConnectionDiagnostic
+  address?: string
   state: BridgeState
   caps: BridgeCaps | null
 }
@@ -108,7 +111,7 @@ function panelRpcError(failure: RpcFailurePayload | undefined, fallbackMessage: 
 export interface PanelApi {
   rpc<T = unknown>(method: string, payload?: unknown): Promise<T>
   respond(rpcId: string, result: RespondResult): Promise<unknown>
-  onStatus(callback: (state: BridgeState, caps: BridgeCaps | null) => void): () => void
+  onStatus(callback: (state: BridgeState, caps: BridgeCaps | null, diagnostic?: ConnectionDiagnostic, address?: string) => void): () => void
   onEvent(callback: (frame: ServerFrame) => void): () => void
   onApprovalRequest(callback: (request: ApprovalRequest) => void): () => void
   onApprovalResolved(callback: (id: string) => void): () => void
@@ -124,6 +127,7 @@ export interface PanelApi {
   registerWindow(windowId: number): Promise<void>
   setActiveSession(sessionId: string, isNew?: boolean): Promise<void>
   updateSettings(settings: Partial<PanelSettings>): Promise<void>
+  rediscover(): Promise<void>
   requestStatus(): Promise<void>
 }
 
@@ -139,7 +143,7 @@ export function connectPanel(): PanelApi {
     resolve: () => void
     reject: (error: Error) => void
   }>()
-  const statusListeners = new Set<(state: BridgeState, caps: BridgeCaps | null) => void>()
+  const statusListeners = new Set<(state: BridgeState, caps: BridgeCaps | null, diagnostic?: ConnectionDiagnostic, address?: string) => void>()
   const eventListeners = new Set<(frame: ServerFrame) => void>()
   const approvalListeners = new Set<(request: ApprovalRequest) => void>()
   const approvalResolvedListeners = new Set<(id: string) => void>()
@@ -181,7 +185,7 @@ export function connectPanel(): PanelApi {
         break
       }
       case 'status':
-        for (const listener of statusListeners) listener(msg.state, msg.caps)
+        for (const listener of statusListeners) listener(msg.state, msg.caps, msg.diagnostic, msg.address)
         break
       case 'event':
         for (const listener of eventListeners) listener(msg.frame)
@@ -413,6 +417,7 @@ export function connectPanel(): PanelApi {
     updateSettings(next) {
       return send({ type: 'settings', settings: next })
     },
+    rediscover() { return send({ type: 'rediscover' }) },
     requestStatus() {
       return send({ type: 'request-status' })
     },

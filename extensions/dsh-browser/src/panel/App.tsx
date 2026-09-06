@@ -1,3 +1,5 @@
+import { ConnectionCard } from './ConnectionCard.tsx'
+import type { ConnectionDiagnostic } from '../background/discovery.ts'
 /**
  * Side panel application: chat with the local dsh agent, plus a settings
  * view. Renders conversation from session history and live session events;
@@ -606,6 +608,8 @@ export function App(): React.JSX.Element {
   const locale = useMemo(() => getUiLocale(), [])
   const copy = PANEL_COPY[locale]
   const [api] = useState<PanelApi>(() => connectPanel())
+  const [diagnostic, setDiagnostic] = useState<ConnectionDiagnostic>()
+  const [bridgeAddress, setBridgeAddress] = useState<string>()
   const [state, setState] = useState<BridgeState>('stopped')
   const [caps, setCaps] = useState<BridgeCaps | null>(null)
   const [settings, setSettings] = useState<PanelSettings | null>(null)
@@ -752,7 +756,9 @@ export function App(): React.JSX.Element {
   const [sessionEpoch, setSessionEpoch] = useState(0)
   const lastStateRef = useRef<BridgeState | null>(null)
   useEffect(() => {
-    const offStatus = api.onStatus((next, nextCaps) => {
+    const offStatus = api.onStatus((next, nextCaps, nextDiagnostic, address) => {
+      setDiagnostic(nextDiagnostic)
+      setBridgeAddress(address)
       setState(next)
       setCaps(nextCaps)
       const previous = lastStateRef.current
@@ -1629,6 +1635,7 @@ export function App(): React.JSX.Element {
             <h1>{copy.settings.title}</h1>
           </div>
         </div>
+        <ConnectionCard diagnostic={diagnostic} address={bridgeAddress} retry={() => api.rediscover()} />
         <UpdateCard copy={copy.update} />
         <div className="settings-panel">
           <label>
@@ -1828,6 +1835,7 @@ export function App(): React.JSX.Element {
 
   return (
     <><div className="app">
+      {state !== 'connected' && <ConnectionCard diagnostic={diagnostic} address={bridgeAddress} retry={() => api.rediscover()} />}
       <header className="topbar">
         <span className="connection" role="status">
           <span className={`dot ${state}`} />

@@ -1,5 +1,7 @@
 # dsh Browser Control Extension (Chrome and Firefox MV3)
 
+For Windows Desktop prebuilt installation, see the [main setup guide](https://github.com/iconFehu/dsh-browser#quick-install). Download and extract the complete Windows Release bundle before using the standard web command below.
+
 English | [中文](README.zh.md)
 
 The **browser-operation end** of dsh: the model reads and operates the browser page you have open — extract content, click elements, fill forms, scroll, and navigate, all in the real page with your login state preserved. The side panel is the conversation entry.
@@ -55,13 +57,13 @@ The recommended zero-configuration command does not require Git or a local clone
 1. **Build and install the extension**:
 
    ```sh
-   curl -fsSL https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.sh | bash
+   curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
    ```
 
    On Windows, run this in PowerShell instead:
 
    ```powershell
-   $s="$env:TEMP\dsh-install.ps1"; irm https://raw.githubusercontent.com/Lum1104/dsh-browser/refs/heads/main/scripts/install.ps1 -OutFile $s; powershell -NoProfile -ExecutionPolicy Bypass -File $s
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
    ```
 
    The script downloads a managed workspace to `~/.dsh/dsh-browser`, builds the bridge plugin, registers its official bundle in the local dsh `web` profile, builds the extension, copies the output to the stable directory `~/.dsh/browser-extension`, and opens `chrome://extensions`. Enable Developer mode, choose Load unpacked, and select the extension directory. Running the command again updates the managed installation.
@@ -69,7 +71,7 @@ The recommended zero-configuration command does not require Git or a local clone
    A cloned checkout uses the same installer without downloading or overwriting source files:
 
    ```sh
-   git clone https://github.com/Lum1104/dsh-browser.git
+   git clone https://github.com/iconFehu/dsh-browser.git
    cd dsh-browser
    ./scripts/install.sh
    ```
