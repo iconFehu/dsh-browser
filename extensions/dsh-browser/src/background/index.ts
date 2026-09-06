@@ -92,6 +92,14 @@ export interface Settings {
   approvalNotifications: boolean
   /** Restore the current tab and page path's conversation when the panel reopens. */
   autoResumeSession: boolean
+  /**
+   * Browser developer mode (Chrome): attach CDP to the controlled tab for
+   * observation (deep DOM reading, console/Log/network diagnostics, response
+   * bodies, performance, PDF, screenshots). Off by default, mirroring Codex's
+   * full-CDP access: it can expose sensitive browser and page data, and
+   * attaching pauses the user's own DevTools on that tab.
+   */
+  cdpEnabled: boolean
 }
 
 const SETTINGS_DEFAULTS: Settings = {
@@ -103,6 +111,7 @@ const SETTINGS_DEFAULTS: Settings = {
   panelTrustedActionOrigins: [],
   approvalNotifications: true,
   autoResumeSession: true,
+  cdpEnabled: false,
 }
 
 const LEGACY_LOCAL_URL = 'ws://127.0.0.1:3080'
@@ -235,6 +244,7 @@ function normalizeSettings(candidate: Settings): Settings {
     panelTrustedActionOrigins: panelTrusted,
     approvalNotifications: candidate.approvalNotifications !== false,
     autoResumeSession: candidate.autoResumeSession !== false,
+    cdpEnabled: candidate.cdpEnabled === true,
   }
 }
 

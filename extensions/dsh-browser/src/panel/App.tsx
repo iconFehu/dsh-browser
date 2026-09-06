@@ -748,6 +748,7 @@ export function App(): React.JSX.Element {
         panelTrustedActionOrigins: raw?.panelTrustedActionOrigins ?? [],
         approvalNotifications: raw?.approvalNotifications ?? true,
         autoResumeSession: raw?.autoResumeSession ?? true,
+        cdpEnabled: raw?.cdpEnabled === true,
       })
     })
   }, [])
@@ -1705,6 +1706,23 @@ export function App(): React.JSX.Element {
             />
             <span className="setting-toggle-control" aria-hidden="true"><span /></span>
           </label>
+          {typeof chrome.debugger !== 'undefined' && (
+            <label className="setting-toggle">
+              <span className="setting-toggle-copy">
+                <strong>{copy.settings.cdpEnabled}</strong>
+                <small>{copy.settings.cdpEnabledHelp}</small>
+              </span>
+              <input
+                className="setting-toggle-input"
+                type="checkbox"
+                checked={settings?.cdpEnabled ?? false}
+                onChange={(event) => setSettings((current) => current === null
+                  ? current
+                  : { ...current, cdpEnabled: event.target.checked })}
+              />
+              <span className="setting-toggle-control" aria-hidden="true"><span /></span>
+            </label>
+          )}
         </div>
         <section className="relay-config" aria-labelledby="relay-title">
           <div className="relay-heading">
