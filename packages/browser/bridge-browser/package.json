@@ -90,7 +90,8 @@
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",
     "build": "tsc -b --pretty false && tsdown && node -e \"require('node:fs').copyFileSync('src/client.js','lib/client.js')\"",
-    "prepack": "pnpm run build"
+    "prepack": "pnpm run build",
+    "prepare": "pnpm run build"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
