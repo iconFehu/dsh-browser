@@ -55,7 +55,7 @@ pnpm --filter dsh-browser-extension run test
 
 扩展是**浏览器组件**：通过加载已解压目录（Chrome）或临时附加组件（Firefox）安装，与 npm 命令无关。它连接的桥插件是另一个组件，用 dsh 命令行注册。
 
-1. **加载扩展（Chrome，方式 B）。** 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载与发布版本匹配的预构建 `dsh-browser-chrome-vX.Y.Z.zip`（每个发布标签固定对应归档）。解压到固定目录，打开 `chrome://extensions`，开启**开发者模式**，点击**加载已解压的扩展程序**，选择该目录。更新时把新版 ZIP 解压覆盖到同一目录，再点击扩展卡片上的**重新加载**；扩展本身也会检查已发布的 Release。
+1. **加载扩展（Chrome，方式 B）。** 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载与发布版本匹配的预构建 `dsh-browser-chrome-X.Y.Z.zip`（每个发布标签固定对应归档）。解压到固定目录，打开 `chrome://extensions`，开启**开发者模式**，点击**加载已解压的扩展程序**，选择该目录。更新时把新版 ZIP 解压覆盖到同一目录，再点击扩展卡片上的**重新加载**；扩展本身也会检查已发布的 Release。
 
    一键安装器（方式 C）为标准 `web` 运行时自动完成同样结果：把托管 workspace 下载到 `~/.dsh/dsh-browser`，构建桥插件并注册到本机 `web` profile，构建扩展并把产物复制到稳定目录 `~/.dsh/browser-extension`，然后打开 `chrome://extensions`：
 

@@ -47,7 +47,7 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-brid
 
 ### Method B — install the extension ZIP
 
-1. Download `dsh-browser-chrome-v0.1.5.zip` from [Releases](https://github.com/iconFehu/dsh-browser/releases) — each release tag pins its matching archive.
+1. Download `dsh-browser-chrome-0.1.5.zip` from [Releases](https://github.com/iconFehu/dsh-browser/releases) — each release tag pins its matching archive.
 2. Extract it to a stable folder.
 3. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select that folder.
 

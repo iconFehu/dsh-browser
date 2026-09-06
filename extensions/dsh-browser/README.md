@@ -55,7 +55,7 @@ Run these commands from the repository root. Chrome outputs to `extensions/dsh-b
 
 The extension is a **browser component**: it is installed by loading an unpacked directory (Chrome) or a temporary add-on (Firefox) — never through an npm command. The bridge plugin it talks to is a separate component registered with `dsh` on the command line.
 
-1. **Load the extension (Chrome, Method B).** Download the prebuilt `dsh-browser-chrome-vX.Y.Z.zip` matching your release from [Releases](https://github.com/iconFehu/dsh-browser/releases) — each release tag pins its archive. Extract it to a stable folder, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select that folder. To update, re-extract the newer ZIP over the same folder and click **Reload** on the extension card; the extension also checks published releases itself.
+1. **Load the extension (Chrome, Method B).** Download the prebuilt `dsh-browser-chrome-X.Y.Z.zip` matching your release from [Releases](https://github.com/iconFehu/dsh-browser/releases) — each release tag pins its archive. Extract it to a stable folder, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select that folder. To update, re-extract the newer ZIP over the same folder and click **Reload** on the extension card; the extension also checks published releases itself.
 
    The one-command installer (Method C) automates the same outcome for the standard `web` runtime: it downloads a managed workspace to `~/.dsh/dsh-browser`, builds the bridge plugin, registers it in the local `web` profile, builds the extension, copies the output to the stable directory `~/.dsh/browser-extension`, and opens `chrome://extensions`:
 
