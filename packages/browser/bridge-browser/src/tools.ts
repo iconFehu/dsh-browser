@@ -271,7 +271,7 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
   // Full-CDP observation tools (mirroring Codex's developer mode division of
   // labor): Chrome-only, observation only, and gated by the extension's
   // developer-mode switch. Actions remain on browser_click/type/press/etc.
-  const OBSERVE_NOTE = 'Requires Chrome with browser developer mode (full CDP) enabled in the extension settings. Observation only — use browser_click / browser_type / browser_press for actions. '
+  const OBSERVE_NOTE = 'Chrome developer mode (full CDP, off by default in Settings); observation only, actions use browser_click/type/press. '
 
   const diagnostics = (): ToolDefinition => defineTool({
     name: 'browser_diagnostics',
