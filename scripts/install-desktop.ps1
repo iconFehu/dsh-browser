@@ -2,11 +2,12 @@
 [CmdletBinding()]
 param(
   [string]$Version = '0.1.4',
-  [string]$BundleDirectory = $PSScriptRoot,
+  [string]$BundleDirectory,
   [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
   [switch]$NoOpen
 )
 $ErrorActionPreference = 'Stop'
+if (-not $BundleDirectory) { $BundleDirectory = $PSScriptRoot }
 $ProgressPreference = 'SilentlyContinue'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

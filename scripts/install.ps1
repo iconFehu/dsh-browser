@@ -3,11 +3,12 @@
 param(
   [ValidateSet('Desktop', 'Web')][string]$Runtime = 'Desktop',
   [string]$Version = '0.1.4',
-  [string]$BundleDirectory = $PSScriptRoot,
+  [string]$BundleDirectory,
   [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
   [switch]$NoOpen
 )
 $ErrorActionPreference = 'Stop'
+if (-not $BundleDirectory) { $BundleDirectory = $PSScriptRoot }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
 $scriptName = if ($Runtime -eq 'Desktop') { 'install-desktop.ps1' } else { 'install-web.ps1' }
 $scriptPath = Join-Path $PSScriptRoot $scriptName
