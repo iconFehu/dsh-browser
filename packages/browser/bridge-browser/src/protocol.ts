@@ -48,6 +48,7 @@ export type ToolErrorCode =
   | 'bridge-closed'
   | 'bad-args'
   | 'internal'
+  | 'feature-unavailable'
 
 /** One tool-call failure: stable machine code plus human text for the model. */
 export interface ToolError {

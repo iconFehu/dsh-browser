@@ -5,7 +5,15 @@ import type { TabFrame } from './frames.ts'
 import type { ApprovalPrompt } from '../security/approval.ts'
 import { getUiLocale, type UiLocale } from '../i18n.ts'
 
-const PAGE_READS = new Set(['browser_snapshot', 'browser_get_text'])
+const PAGE_READS = new Set([
+  'browser_snapshot',
+  'browser_get_text',
+  // Full-CDP observation reads share the read-sharing policy.
+  'browser_diagnostics',
+  'browser_network',
+  'browser_performance',
+  'browser_dom',
+])
 const STATE_CHANGING_ACTIONS = new Set([
   'browser_click',
   'browser_type',

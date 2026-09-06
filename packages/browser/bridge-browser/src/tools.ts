@@ -64,6 +64,10 @@ export const BROWSER_TOOL_NAMES = [
   'browser_reload',
   'browser_get_text',
   'browser_wait',
+  'browser_diagnostics',
+  'browser_network',
+  'browser_performance',
+  'browser_dom',
 ] as const
 
 /**
@@ -262,6 +266,56 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
     },
   })
 
+  // Full-CDP observation tools (mirroring Codex's developer mode division of
+  // labor): Chrome-only, observation only, and gated by the extension's
+  // developer-mode switch. Actions remain on browser_click/type/press/etc.
+  const OBSERVE_NOTE = 'Requires Chrome with browser developer mode (full CDP) enabled in the extension settings. Observation only — use browser_click / browser_type / browser_press for actions. '
+
+  const diagnostics = (): ToolDefinition => defineTool({
+    name: 'browser_diagnostics',
+    description: OBSERVE_NOTE + 'Return recent console errors and warnings, Log entries, and failed or HTTP 4xx/5xx network requests observed on the controlled tab, which helps detect pages that never finished loading or that logged errors. ' + UNTRUSTED_CONTENT_WARNING,
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_diagnostics', {}),
+  })
+
+  const network = (): ToolDefinition => defineTool({
+    name: 'browser_network',
+    description: OBSERVE_NOTE + 'List recent network requests on the controlled tab (method, redacted URL, HTTP status or failure). Set includeBodies=true to also fetch capped response bodies for the newest successful requests — response bodies can contain authentication tokens, personal data or internal ids, so prefer leaving it off. ' + UNTRUSTED_CONTENT_WARNING,
+    parameters: {
+      includeBodies: { type: 'boolean', description: 'When true, fetch capped response bodies for the newest successful requests. May expose sensitive data.' },
+      limit: { type: 'number', description: 'How many requests to list; defaults to 20, maximum 60.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => {
+      const a = args as { includeBodies?: boolean; limit?: number }
+      return call(exec, 'browser_network', {
+        ...a.includeBodies !== undefined ? { includeBodies: a.includeBodies } : {},
+        ...a.limit !== undefined ? { limit: a.limit } : {},
+      })
+    },
+  })
+
+  const performance = (): ToolDefinition => defineTool({
+    name: 'browser_performance',
+    description: OBSERVE_NOTE + 'Return Chrome performance counter deltas (layout, style recalculation, script and task durations, node counts, memory) measured since the previous call on the controlled tab. Useful for before/after comparisons of page work.',
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_performance', {}),
+  })
+
+  const dom = (): ToolDefinition => defineTool({
+    name: 'browser_dom',
+    description: OBSERVE_NOTE + 'Return a deep text read of the controlled page driven by Chrome DevTools: main-document and per-frame text including open shadow DOM and sandboxed or uninjectable cross-origin iframes, plus counts of shadow roots and interactive elements. No inventory is produced — use browser_snapshot for numbered action targets. ' + UNTRUSTED_CONTENT_WARNING,
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_dom', {}),
+  })
+
   return [
     snapshot(),
     click(),
@@ -275,5 +329,9 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
     simple('browser_reload', 'Reload the current page.'),
     getText(),
     wait(),
+    diagnostics(),
+    network(),
+    performance(),
+    dom(),
   ]
 }

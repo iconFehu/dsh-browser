@@ -74,6 +74,7 @@ import { SelectionTracker, type SelectionSource } from './selection.ts'
 import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
 import { ApprovalCoordinator, type ApprovalRequestResult } from './approval-coordinator.ts'
 import { cdpObservation } from './cdp/instance.ts'
+import { CDP_OBSERVATION_TOOLS, dispatchCdpObservation } from './cdp/tools.ts'
 import {
   LEGACY_RECENT_SESSION_STORAGE_KEY,
   PAGE_SESSION_CONTEXT_STORAGE_KEY,
@@ -983,15 +984,23 @@ function routeToolCall(call: ToolCall): void {
         ))
     : resolveToolTab(call.sessionId).then((target) => 'ok' in target
       ? target
-      : dispatchToolCall(
-          call,
-          settings.sharePageContent,
-          budget,
-          (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId),
-          controller.signal,
-          target,
-          () => target.id !== undefined && tabAffinity.allowsTarget(target.id, call.sessionId),
-        ))
+      : CDP_OBSERVATION_TOOLS.has(call.name)
+        ? dispatchCdpObservation(call, {
+            manager: cdpObservation,
+            tab: target,
+            sharePageContent: settings.sharePageContent,
+            authorize: (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId),
+            signal: controller.signal,
+          })
+        : dispatchToolCall(
+            call,
+            settings.sharePageContent,
+            budget,
+            (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId),
+            controller.signal,
+            target,
+            () => target.id !== undefined && tabAffinity.allowsTarget(target.id, call.sessionId),
+          ))
   ).then(
     async (answer) => {
       // A committed browser_open_tab already rebound affinity; prefer that
