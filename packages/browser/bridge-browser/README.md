@@ -91,6 +91,13 @@ Each `respond` carries a globally unique transport id as well as the host intera
 | `browser_click` / `browser_type` / `browser_press` | Operate inventory items by stable index. |
 | `browser_scroll` / `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Page movement. |
 | `browser_get_text` / `browser_wait` | Read regions / settle detection. |
+| `browser_dom` | Deep per-frame text read via full CDP (shadow DOM, uninjectable iframes); no inventory. |
+| `browser_diagnostics` | Console/Log/network-failure summary via full CDP. |
+| `browser_network` | Recent requests; `includeBodies` fetches capped response bodies. |
+| `browser_performance` | Chrome performance counter deltas. |
+| `browser_screenshot` / `browser_export_pdf` | Local PNG/PDF export through a save dialog (Chrome developer mode). |
+
+The last six tools require **browser developer mode (full CDP)** — the extension's Settings switch is off by default and Chrome-only; when it is off or unsupported they answer `feature-unavailable` instead of falling back. They are observation-only: click/type/press/scroll/navigation remain on the numbered-inventory tools above.
 
 ## Model Experience
 

@@ -6,7 +6,7 @@ Windows Desktop 预构建安装与三种安装方式见[主安装指南](https:/
 
 dsh 的**浏览器操作端**：让模型直接读取并操作你在浏览器里打开的页面——抓取内容、点击元素、填写表单、滚动与导航，全部在真实页面执行、登录态保留。侧边栏面板是与模型对话的入口。
 
-**两条明确分离的通道**：浏览器页面仍以结构化文本呈现（带编号的交互元素清单），浏览器工具不会截图；另一方面，dsh 0.1.2 宿主可声明多模态图片限制，侧栏据此接收 PNG、JPEG、WebP 和 GIF，并渲染会话中的持久图片附件。
+**两条明确分离的通道**：浏览器页面仍以结构化文本呈现（带编号的交互元素清单），浏览器工具从不把截图发给模型；可选的**浏览器开发者模式**（完整 CDP，Chrome，默认关闭）还能观察更深的页面状态，或经保存对话框把 PNG/PDF 导出为本地文件。另一方面，dsh 0.1.2 宿主可声明多模态图片限制，侧栏据此接收 PNG、JPEG、WebP 和 GIF，并渲染会话中的持久图片附件。
 
 ## 模型能做什么
 
@@ -20,6 +20,7 @@ dsh 的**浏览器操作端**：让模型直接读取并操作你在浏览器里
 | 导航 | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 受控标签页内跳转，或新开标签页并跟随 |
 | 读区域 | `browser_get_text` | 懒加载内容 / 局部文本 |
 | 等待 | `browser_wait` | 页面加载与渲染稳定检测 |
+| 观察（开发者模式） | `browser_dom` / `browser_diagnostics` / `browser_network` / `browser_performance` / `browser_screenshot` / `browser_export_pdf` | 完整 CDP 观察，需在设置中开启**浏览器开发者模式**（默认关闭，Chrome）：深层 shadow/frame 文本读取、console/Log/网络诊断（可按需拉取截断响应体）、性能增量、经保存对话框导出本地 PNG/PDF |
 | 图片对话 | `session.prompt` / `session.attachment` | 按宿主能力启用图片选择、纯图片发送和持久历史预览 |
 | 引用你划选的内容 | 侧栏输入框 | 你在页面里选中的文字会变成输入框里的引用，随下一条消息一起发送 |
 
@@ -101,9 +102,21 @@ pnpm --filter dsh-browser-extension run test
 - **分级审批**：默认「自动共享」允许模型按需读取受控标签页而不额外弹窗；「每次询问」可恢复逐次读取确认，「关闭」会阻断读取。在「每次询问」模式下，读取弹窗可以仅允许一次，也可以持久切回自动读取，之后仍可在设置中关闭。状态变更工具仍然失败关闭，并显示实际 origin 和脱敏动作摘要；用户可拒绝、仅允许一次，或把某个 origin 标记为**对话期间免确认**——条目在设置中移除前一直保留，且仅在侧栏打开时生效；**永久免确认域名**（侧栏关闭也有效）在设置中显式管理。侧栏关闭时，审批最多保留 60 秒；启用通知后，系统通知可把用户带回侧栏。会话级审批只会在其所属会话恢复完成后显示。调用方取消或桥接超时时，会先撤销尚未完成的审批，过期动作不会继续执行。
 - **会话续接**：重新打开侧栏时默认恢复最近活跃的浏览器会话；若该会话不可用，则恢复最新的非空持久会话，最后才创建新会话。可在设置中关闭。
 
+## 浏览器开发者模式（完整 CDP，Chrome）
+
+对齐 Codex 的开发者模式，设置里提供**默认关闭**的开关，门控 Chrome-only 的 `debugger` 权限使用。开启且侧栏对话打开时，后台会对受控标签页附加 CDP，**只做观察**——所有动作仍走 content script 管线：
+
+- `browser_dom` 逐帧读取文本，含 open shadow DOM 与沙箱/无法注入的跨源 iframe（不产编号；动作仍以 `browser_snapshot` 为准）。
+- `browser_diagnostics` 汇总 console 报错/警告、Log 条目、失败或 HTTP 4xx/5xx 请求。
+- `browser_network` 列出近期请求（URL 已脱敏）；`includeBodies: true` 时拉取截断的响应体并带敏感数据警告。
+- `browser_performance` 返回 Chrome 计数器增量。
+- `browser_screenshot` / `browser_export_pdf` 把标签页存为 PNG/PDF 并打开**保存对话框**落到本地；捕获内容绝不进入模型通道。
+
+这些工具遵循读共享策略（`auto`/`ask`/`off`），把页面/浏览器文本包进不可信边界；在关闭、不支持（Firefox）或标签页不是普通 http(s) 页面时返回 `feature-unavailable`（绝不静默回退）。附加会暂停该标签页你自己的 DevTools；面板关闭、开关关闭、受控页被关闭/替换或导航离开 http(s) 时立即分离。
+
 ## 权限说明
 
-Chrome 使用 `sidePanel`，Firefox 使用 `sidebar_action`。两者都申请 `storage`（设置与最近会话续接）、`notifications`（侧栏关闭时可选的审批提醒）、`tabs` + `activeTab` + `scripting`（观察切页，并向用户显式选择的受控标签页注入/发消息；安装前已打开的页面也会按需补注入）、`webNavigation`（枚举该标签页中的 frame，并把消息绑定到具体文档）、`alarms`（后台保活）和 `http/https`（内容脚本注入普通网页）。Firefox AMO manifest 如实声明扩展会把浏览活动、网页内容/操作和对话内容发送给用户配置的 dsh/模型服务。扩展绝不改变用户正在看的标签页，也不会静默跟随手动切页；只有用户选择继续原页面后，助手才会在后台操作。
+Chrome 使用 `sidePanel`，Firefox 使用 `sidebar_action`。两者都申请 `storage`（设置与最近会话续接）、`notifications`（侧栏关闭时可选的审批提醒）、`tabs` + `activeTab` + `scripting`（观察切页，并向用户显式选择的受控标签页注入/发消息；安装前已打开的页面也会按需补注入）、`webNavigation`（枚举该标签页中的 frame，并把消息绑定到具体文档）、`alarms`（后台保活）和 `http/https`（内容脚本注入普通网页）。Chrome manifest 额外申请 `debugger` 与 `downloads`，仅供默认关闭的浏览器开发者模式使用（CDP 观察、本地 PNG/PDF 导出）。Firefox AMO manifest 如实声明扩展会把浏览活动、网页内容/操作和对话内容发送给用户配置的 dsh/模型服务。扩展绝不改变用户正在看的标签页，也不会静默跟随手动切页；只有用户选择继续原页面后，助手才会在后台操作。
 
 ## 已知限制
 

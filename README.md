@@ -8,7 +8,7 @@ Connect [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) to t
 
 `dsh` is DeepSeek AI's open-source, plugin-based agent harness. This repository provides a companion browser bridge plugin and Chrome/Firefox MV3 extension as one standalone pnpm workspace.
 
-Browser operation remains text-only: pages become structured text with a numbered inventory of interactive elements, and the model addresses those elements by number. dsh 0.1.2 multimodal chat is separate from that page channel—the side panel accepts PNG, JPEG, WebP, and GIF attachments when the host advertises image support, while browser tools still never capture screenshots.
+Browser operation remains text-only: pages become structured text with a numbered inventory of interactive elements, and the model addresses those elements by number. dsh 0.1.2 multimodal chat is separate from that page channel—the side panel accepts PNG, JPEG, WebP, and GIF attachments when the host advertises image support, while browser tools never send screenshots to the model. Only the optional **browser developer mode** (full CDP, off by default, Chrome) can export screenshots/PDF as local files through a save dialog.
 
 > [!IMPORTANT]
 > The workspace pins dsh 0.1.2-rc.1, the minimum supported runtime. Older DSH releases are not supported.
@@ -96,6 +96,18 @@ The paired Playwright / extension duration ratio was **1.24** (95% CI **1.16–1
 | Wait for stability | `browser_wait` | Page-load and render-settle detection |
 | Send images | `session.prompt` / `session.attachment` | Host-capability-gated image drafts, image-only prompts, and durable history previews |
 | Quote a selection | side panel composer | Text you highlight in the page appears in the composer and is sent with your next message as fenced, attributed page content |
+
+### Browser developer mode (full CDP, Chrome, off by default)
+
+Mirroring Codex's developer-mode posture, the extension keeps a **browser developer mode** switch in Settings that is **off by default**. When enabled on Chrome, the assistant may attach Chrome DevTools Protocol to the controlled tab purely for **observation** — clicks, typing, scrolling and navigation keep using the regular high-level tools:
+
+- `browser_dom` — deep text read of every frame, including open shadow DOM and sandboxed or uninjectable cross-origin iframes
+- `browser_diagnostics` — console errors/warnings, Log entries, and failed or HTTP 4xx/5xx network requests
+- `browser_network` — recent requests; `includeBodies` also fetches capped response bodies (they can contain tokens or personal data — treat as untrusted)
+- `browser_performance` — Chrome performance counter deltas
+- `browser_screenshot` / `browser_export_pdf` — capture the tab as PNG/PDF and open a save dialog for a local file; the capture never enters the model channel
+
+Attaching pauses your own DevTools for that tab. The debugger detaches when the panel closes, developer mode turns off, or the controlled tab leaves http(s), closes, or is replaced. Firefox does not offer these tools. Page and browser text returned by observation tools is marked as untrusted input.
 
 ## Repository layout
 
@@ -210,7 +222,7 @@ If you encounter `cache.hydratePrepared is not a function`, update the repositor
 - The bridge path sits outside the `/api` trust boundary and performs its own bearer-token authentication.
 - Local Chrome extension origins retain zero-configuration loopback access; Firefox origins are per-install UUIDs and must present the bearer token.
 - Privileged gateway methods such as `settings.*`, `credentials.*`, and `host.open*` reject non-loopback sources.
-- The browser-page pipeline is text-only and never captures screenshots; explicitly attached chat images use dsh's durable attachment service. Password and payment-card values never leave the page.
+- The browser-page pipeline is text-only. Only the optional **browser developer mode** (full CDP; off by default; Chrome) can observe deeper DOM/network/console/performance state or export screenshots/PDF as local files through a save dialog — it never sends captures to the model, and the debugger is detached when the panel closes or the controlled tab changes. Explicitly attached chat images use dsh's durable attachment service. Password and payment-card values never leave the page.
 - When work begins, the assistant binds to the active tab (at prompt submission, or at the first direct browser-tool call). If you switch tabs manually, later browser actions pause and the side panel asks whether the assistant should continue on the original tab or follow the new one. Choosing the original tab permits background operation; the extension never silently retargets or changes your visible tab. Closing the controlled tab also pauses tools until you explicitly select the current page.
 - Text you highlight is captured only while a side panel is open and page sharing is not `off`, and never from password or payment-card fields. It stays inside the extension until you send the message, is dropped when you dismiss it or its page navigates or closes, and reaches the model inside the same untrusted-content boundary as page snapshots — including its source title and URL, which the page also controls.
 - Page-authored text is wrapped as untrusted input. The default `auto` mode reads only the controlled tab without an extra prompt; privacy-sensitive users can select `ask` for per-read confirmation or `off` to block reads entirely. In `ask` mode, the read dialog can allow one read or persistently switch back to `auto`; this can be reversed in Settings. Read page text is sent to the selected model.

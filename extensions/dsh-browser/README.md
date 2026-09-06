@@ -6,7 +6,7 @@ English | [中文](README.zh.md)
 
 The **browser-operation end** of dsh: the model reads and operates the browser page you have open — extract content, click elements, fill forms, scroll, and navigate, all in the real page with your login state preserved. The side panel is the conversation entry.
 
-**Two explicit channels**: browser pages are still rendered as structured text (a numbered interactive-element inventory), so browser tools never take screenshots. Separately, a dsh 0.1.2 host can advertise multimodal image limits; the side panel then accepts PNG, JPEG, WebP, and GIF attachments and renders their durable history references.
+**Two explicit channels**: browser pages are still rendered as structured text (a numbered interactive-element inventory), so browser tools never send screenshots to the model. The optional **browser developer mode** (full CDP, Chrome, off by default) can additionally observe deeper page state or export local PNG/PDF files through a save dialog. Separately, a dsh 0.1.2 host can advertise multimodal image limits; the side panel then accepts PNG, JPEG, WebP, and GIF attachments and renders their durable history references.
 
 ## What the model can do
 
@@ -20,6 +20,7 @@ The **browser-operation end** of dsh: the model reads and operates the browser p
 | Navigate | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it |
 | Read region | `browser_get_text` | Lazy-loaded content / partial text |
 | Wait | `browser_wait` | Page load and render-settle detection |
+| Observe (developer mode) | `browser_dom` / `browser_diagnostics` / `browser_network` / `browser_performance` / `browser_screenshot` / `browser_export_pdf` | Full-CDP observation behind the **browser developer mode** switch (off by default, Chrome): deep shadow/frame text reads, console/Log/network diagnostics (incl. capped response bodies on request), performance deltas, and local PNG/PDF export via a save dialog |
 | Chat with images | `session.prompt` / `session.attachment` | Host-gated image selection, image-only sends, and durable history previews |
 | Quote what you highlight | side panel composer | The text you select in the page becomes a quote in the composer and rides along with your next message |
 
@@ -101,9 +102,21 @@ For extension-only development, load `extensions/dsh-browser/dist/` from `chrome
 - **Proportional approval**: the default `auto` mode lets the model read the controlled tab without an extra prompt; `ask` restores per-read confirmation and `off` blocks reads. In `ask` mode, the read dialog can allow one read or persistently switch back to `auto`, which remains reversible in Settings. State-changing tools still fail closed and show their exact origin plus a redacted action summary. The user may deny, allow once, or mark one origin as no-confirmation **while chatting** — the entry is stored until removed in Settings and applies only while a side panel is open — while **permanently allowed domains** (effective even with the panel closed) are managed explicitly in Settings. If the panel is closed, an approval remains pending for up to 60 seconds and, when enabled, a system notification opens the panel for review. The panel restores the requesting session before showing a session-scoped approval. Caller cancellation or bridge timeout withdraws any open approval before an action can run.
 - **Conversation continuity**: reopening the panel resumes the most recently active browser conversation by default, falling back to the latest non-empty durable session before creating a new one. This can be disabled in Settings.
 
+## Browser developer mode (full CDP, Chrome)
+
+Mirroring Codex's developer mode, a **Settings toggle (off by default)** gates the Chrome-only `debugger` permission usage. When on and a side panel conversation is open, the background attaches CDP to the controlled tab **for observation only** — all actions still run through the content-script pipeline:
+
+- `browser_dom` reads every frame's text, including open shadow DOM and sandboxed/uninjectable cross-origin iframes (no inventory; `browser_snapshot` remains the action source).
+- `browser_diagnostics` reports console errors/warnings, Log entries, and failed or HTTP 4xx/5xx requests.
+- `browser_network` lists recent requests (redacted URLs); `includeBodies: true` fetches capped response bodies with an explicit sensitive-data warning.
+- `browser_performance` returns Chrome counter deltas.
+- `browser_screenshot` and `browser_export_pdf` capture the tab (PNG/PDF) and open a **save dialog** for a local file; captures never enter the model channel.
+
+These tools share the read-sharing policy (`auto`/`ask`/`off`), wrap all page/browser text as untrusted, and answer `feature-unavailable` (never a silent fallback) when disabled, unsupported (Firefox), or when the tab is not a normal http(s) page. Attaching pauses your own DevTools for that tab; the session is detached when the panel closes, the switch turns off, or the controlled tab closes, is replaced, or navigates off http(s).
+
 ## Permissions
 
-Chrome uses `sidePanel`; Firefox uses `sidebar_action`. Both request `storage` (settings and recent-session continuity), `notifications` (optional reminders for approvals received while the panel is closed), `tabs` + `activeTab` + `scripting` (observe tab changes and inject/message the explicitly controlled tab, including lazy recovery for pages opened before install), `webNavigation` (enumerate and bind messages to that tab's frame documents), `alarms` (background keepalive), and `http/https` (content-script injection on normal pages). Firefox's AMO manifest declares the browsing activity, website content/activity, and personal communications that the add-on sends to the configured dsh/model service. The extension never changes the visible tab or silently follows a manual switch; background operation happens only after the user chooses to stay on the original tab.
+Chrome uses `sidePanel`; Firefox uses `sidebar_action`. Both request `storage` (settings and recent-session continuity), `notifications` (optional reminders for approvals received while the panel is closed), `tabs` + `activeTab` + `scripting` (observe tab changes and inject/message the explicitly controlled tab, including lazy recovery for pages opened before install), `webNavigation` (enumerate and bind messages to that tab's frame documents), `alarms` (background keepalive), and `http/https` (content-script injection on normal pages). The Chrome manifest additionally requests `debugger` and `downloads`, used only by the off-by-default browser developer mode (CDP observation; local PNG/PDF export). Firefox's AMO manifest declares the browsing activity, website content/activity, and personal communications that the add-on sends to the configured dsh/model service. The extension never changes the visible tab or silently follows a manual switch; background operation happens only after the user chooses to stay on the original tab.
 
 ## Known limitations
 

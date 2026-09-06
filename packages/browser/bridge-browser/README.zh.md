@@ -91,6 +91,13 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 web
 | `browser_click` / `browser_type` / `browser_press` | 按稳定编号操作清单元素。 |
 | `browser_scroll` / `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 页面移动。 |
 | `browser_get_text` / `browser_wait` | 读区域文本 / 稳定检测。 |
+| `browser_dom` | 经完整 CDP 的逐帧深层文本读取（shadow DOM、无法注入的 iframe）；不产编号清单。 |
+| `browser_diagnostics` | 经完整 CDP 的 console/Log/网络失败汇总。 |
+| `browser_network` | 近期请求；`includeBodies` 拉取截断响应体。 |
+| `browser_performance` | Chrome 性能计数器增量。 |
+| `browser_screenshot` / `browser_export_pdf` | 经保存对话框导出本地 PNG/PDF（Chrome 开发者模式）。 |
+
+最后六个工具需要**浏览器开发者模式（完整 CDP）**——扩展设置里的开关默认关闭且仅 Chrome 可用；关闭或不支持时返回 `feature-unavailable` 而不回退。它们只做观察：点击/输入/按键/滚动/导航仍走上方基于编号清单的工具。
 
 ## 模型体验
 
