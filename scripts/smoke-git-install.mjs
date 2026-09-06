@@ -136,13 +136,17 @@ try {
   // HEAD commit must carry the bridge's prepare script (builds lib/).
   await mkdir(temp, { recursive: true })
   git(['clone', '--no-hardlinks', '-q', root, remote])
-  const spec = `git+file:///${remote.replaceAll('\\', '/')}#path:/packages/browser/bridge-browser`
+  // file:// URLs need exactly three slashes on both platforms: strip a
+  // leading "/" from a POSIX absolute path and convert Windows backslashes.
+  const urlPath = remote.replaceAll('\\', '/').replace(/^\//, '')
+  const gitUrl = `git+file:///${urlPath}`
+  const spec = `${gitUrl}#path:/packages/browser/bridge-browser`
   const first = await run(['plugin', '--profile', 'web', 'add', '-w', spec])
   if (first.code !== 0) {
     // Expected: pnpm blocks the git dependency's build scripts on purpose.
     assert.match(first.output, /allowBuilds/, first.output)
     const commit = git(['rev-parse', 'HEAD'], { cwd: remote })
-    const key = `${bridgeName}@git+file:///${remote.replaceAll('\\', '/')}#${commit}&path:/packages/browser/bridge-browser`
+    const key = `${bridgeName}@${gitUrl}#${commit}&path:/packages/browser/bridge-browser`
     const workspaceYaml = join(home, 'profiles/web/pnpm-workspace.yaml')
     const existing = await readFile(workspaceYaml, 'utf8')
     const addition = existing.includes('\nallowBuilds:')
