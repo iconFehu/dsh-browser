@@ -59,7 +59,7 @@ import {
 import { getUiLocale } from '../i18n.ts'
 import { InteractionResponseRouter } from './responses.ts'
 import {
-  actionCoveredByTrustedOrigins,
+  actionCoveredByTrustedTiers,
   normalizeTrustedOrigin,
 } from '../security/trusted-origins.ts'
 import { TransientEventCache } from './transient-events.ts'
@@ -84,8 +84,10 @@ export interface Settings {
   bridgeUrl: string
   token: string
   sharePageContent: 'ask' | 'auto' | 'off'
-  /** Origins whose state-changing actions may run without another prompt. */
+  /** Origins whose state-changing actions may run without another prompt, permanently (even with the side panel closed). */
   trustedActionOrigins: string[]
+  /** Origins exempt from action confirmation only while a side panel conversation is open; kept until removed. */
+  panelTrustedActionOrigins: string[]
   /** Show an OS notification when no side panel can display an approval. */
   approvalNotifications: boolean
   /** Restore the current tab and page path's conversation when the panel reopens. */
@@ -98,6 +100,7 @@ const SETTINGS_DEFAULTS: Settings = {
   token: '',
   sharePageContent: 'auto',
   trustedActionOrigins: [],
+  panelTrustedActionOrigins: [],
   approvalNotifications: true,
   autoResumeSession: true,
 }
@@ -153,8 +156,6 @@ const pageSessionContexts = new PageSessionContextTracker({
   },
 })
 void chrome.storage.session.remove(LEGACY_RECENT_SESSION_STORAGE_KEY).catch(() => {})
-/** Ephemeral allowlist: cleared when the last side panel closes or this worker restarts. */
-const sessionTrustedActionOrigins = new Set<string>()
 /** Tool calls that can still be withdrawn by a bridge `tool.cancel` frame. */
 const activeToolCalls = new Map<string, AbortController>()
 let lastPersistedAffinity: string | undefined
@@ -221,6 +222,9 @@ function normalizeSettings(candidate: Settings): Settings {
   const trusted = Array.isArray(candidate.trustedActionOrigins)
     ? [...new Set(candidate.trustedActionOrigins.map(normalizeTrustedOrigin).filter((entry): entry is string => entry !== undefined))].sort()
     : []
+  const panelTrusted = Array.isArray(candidate.panelTrustedActionOrigins)
+    ? [...new Set(candidate.panelTrustedActionOrigins.map(normalizeTrustedOrigin).filter((entry): entry is string => entry !== undefined))].sort()
+    : []
   const sharePageContent = candidate.sharePageContent === 'auto' || candidate.sharePageContent === 'off'
     ? candidate.sharePageContent
     : candidate.sharePageContent === 'ask' ? 'ask' : 'auto'
@@ -228,6 +232,7 @@ function normalizeSettings(candidate: Settings): Settings {
     ...candidate,
     sharePageContent,
     trustedActionOrigins: trusted,
+    panelTrustedActionOrigins: panelTrusted,
     approvalNotifications: candidate.approvalNotifications !== false,
     autoResumeSession: candidate.autoResumeSession !== false,
   }
@@ -788,10 +793,14 @@ async function authorizeToolCall(
   sessionId?: string,
 ): Promise<ApprovalAuthorization> {
   if (signal.aborted) return 'cancelled'
-  if (actionCoveredByTrustedOrigins(
+  // Permanent trust always applies; the chat-scoped allowlist is consulted only
+  // while at least one side panel conversation is open, and otherwise stays
+  // stored but inactive until the panel opens again.
+  if (actionCoveredByTrustedTiers(
     prompt,
-    sessionTrustedActionOrigins,
+    panelPorts.size > 0,
     settings.trustedActionOrigins,
+    settings.panelTrustedActionOrigins,
   )) {
     return 'approved'
   }
@@ -804,7 +813,11 @@ async function authorizeToolCall(
     return 'approved'
   }
   if (decision === 'trust-session' && prompt.kind === 'action' && prompt.canTrust && prompt.origins.length === 1) {
-    sessionTrustedActionOrigins.add(prompt.origins[0]!)
+    // Chat-scoped no-confirmation: persisted until the user removes it, but it
+    // participates in authorization only while a side panel is open.
+    await persistSettings({
+      panelTrustedActionOrigins: [...settings.panelTrustedActionOrigins, prompt.origins[0]!],
+    })
     return 'approved'
   }
   // Retain wire compatibility with panels from the previous build. The new UI
@@ -1422,7 +1435,8 @@ chrome.runtime.onConnect.addListener((port) => {
     if (panelPorts.size === 0) {
       bridgeStartRevision += 1
       bridge?.suspendReconnect()
-      sessionTrustedActionOrigins.clear()
+      // The chat-scoped allowlist stays stored (it reapplies when a panel
+      // reopens); only ephemeral runtime state is torn down here.
       approvals.notifyPending()
       if (bridge?.state !== 'connected') disarmBridgeKeepalive()
     }

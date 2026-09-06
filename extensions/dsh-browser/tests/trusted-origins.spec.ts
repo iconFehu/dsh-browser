@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   actionCoveredByTrustedOrigins,
+  actionCoveredByTrustedTiers,
   normalizeTrustedOrigin,
   originMatchesTrusted,
 } from '../src/security/trusted-origins.ts'
@@ -91,5 +92,35 @@ describe('actionCoveredByTrustedOrigins', () => {
       origins: ['https://app.example.com', 'https://bank.example.net'],
       canTrust: false,
     }), trusted)).toBe(false)
+  })
+})
+
+describe('actionCoveredByTrustedTiers', () => {
+  const permanent = ['https://*.example.com']
+  const chatScoped = ['https://chat.example.net']
+
+  it('applies the permanent tier whether or not a side panel is open', () => {
+    expect(actionCoveredByTrustedTiers(action({ origins: ['https://app.example.com'] }), true, permanent, chatScoped)).toBe(true)
+    expect(actionCoveredByTrustedTiers(action({ origins: ['https://app.example.com'] }), false, permanent, chatScoped)).toBe(true)
+  })
+
+  it('honors the chat-scoped tier only while a side panel conversation is open', () => {
+    const prompt = action({ origins: ['https://chat.example.net'] })
+    expect(actionCoveredByTrustedTiers(prompt, true, permanent, chatScoped)).toBe(true)
+    expect(actionCoveredByTrustedTiers(prompt, false, permanent, chatScoped)).toBe(false)
+  })
+
+  it('keeps chat-scoped entries stored but inactive when the panel is closed', () => {
+    // Closed panel must not fall through to a prompt-free approval from the
+    // chat-scoped list, while the same prompt becomes approved once reopened.
+    const prompt = action({ origins: ['https://chat.example.net'] })
+    expect(actionCoveredByTrustedTiers(prompt, false, [], chatScoped)).toBe(false)
+    expect(actionCoveredByTrustedTiers(prompt, true, [], chatScoped)).toBe(true)
+  })
+
+  it('still fails closed for unknown-destination history actions', () => {
+    const prompt = action({ action: 'browser_back', canTrust: false, origins: [] })
+    expect(actionCoveredByTrustedTiers(prompt, true, permanent, chatScoped)).toBe(false)
+    expect(actionCoveredByTrustedTiers(prompt, false, permanent, chatScoped)).toBe(false)
   })
 })

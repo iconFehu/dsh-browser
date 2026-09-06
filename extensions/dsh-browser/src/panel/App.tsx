@@ -631,6 +631,7 @@ export function App(): React.JSX.Element {
   const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([])
   const [tabAffinity, setTabAffinity] = useState<TabAffinityState | null>(null)
   const [trustedOriginInput, setTrustedOriginInput] = useState('')
+  const [panelTrustedOriginInput, setPanelTrustedOriginInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showSessionPicker, setShowSessionPicker] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(false)
@@ -744,6 +745,7 @@ export function App(): React.JSX.Element {
         token: raw?.token ?? '',
         sharePageContent: raw?.sharePageContent ?? 'auto',
         trustedActionOrigins: raw?.trustedActionOrigins ?? [],
+        panelTrustedActionOrigins: raw?.panelTrustedActionOrigins ?? [],
         approvalNotifications: raw?.approvalNotifications ?? true,
         autoResumeSession: raw?.autoResumeSession ?? true,
       })
@@ -1603,19 +1605,21 @@ export function App(): React.JSX.Element {
     }
   }
 
-  function addTrustedOrigin(): void {
-    const origin = normalizeWebOrigin(trustedOriginInput)
+  function addTrustedOrigin(list: 'trustedActionOrigins' | 'panelTrustedActionOrigins'): void {
+    const input = list === 'panelTrustedActionOrigins' ? panelTrustedOriginInput : trustedOriginInput
+    const origin = normalizeWebOrigin(input)
     if (origin === null) return
     setSettings((current) => current === null
       ? current
-      : { ...current, trustedActionOrigins: [...new Set([...current.trustedActionOrigins, origin])].sort() })
-    setTrustedOriginInput('')
+      : { ...current, [list]: [...new Set([...current[list], origin])].sort() })
+    if (list === 'panelTrustedActionOrigins') setPanelTrustedOriginInput('')
+    else setTrustedOriginInput('')
   }
 
-  function removeTrustedOrigin(origin: string): void {
+  function removeTrustedOrigin(list: 'trustedActionOrigins' | 'panelTrustedActionOrigins', origin: string): void {
     setSettings((current) => current === null
       ? current
-      : { ...current, trustedActionOrigins: current.trustedActionOrigins.filter((candidate) => candidate !== origin) })
+      : { ...current, [list]: current[list].filter((candidate) => candidate !== origin) })
   }
 
   // 状态栏只显示连接状态；快照上限是技术细节，在设置页说明（见 hint）。
@@ -1808,10 +1812,10 @@ export function App(): React.JSX.Element {
               aria-label={copy.settings.trustedOriginInput}
               value={trustedOriginInput}
               onChange={(event) => setTrustedOriginInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') addTrustedOrigin() }}
+              onKeyDown={(event) => { if (event.key === 'Enter') addTrustedOrigin('trustedActionOrigins') }}
               placeholder="https://example.com / https://*.example.com"
             />
-            <button disabled={normalizeWebOrigin(trustedOriginInput) === null} onClick={addTrustedOrigin}>{copy.settings.add}</button>
+            <button disabled={normalizeWebOrigin(trustedOriginInput) === null} onClick={() => addTrustedOrigin('trustedActionOrigins')}>{copy.settings.add}</button>
           </div>
           {trustedOriginInput.trim() !== '' && normalizeWebOrigin(trustedOriginInput) === null && (
             <p className="origin-error">{copy.settings.invalidOrigin}</p>
@@ -1820,7 +1824,33 @@ export function App(): React.JSX.Element {
           {settings?.trustedActionOrigins.map((origin) => (
             <div className="trusted-origin" key={origin}>
               <code>{origin}</code>
-              <button onClick={() => removeTrustedOrigin(origin)} aria-label={copy.settings.removeOrigin(origin)}>{copy.settings.remove}</button>
+              <button onClick={() => removeTrustedOrigin('trustedActionOrigins', origin)} aria-label={copy.settings.removeOrigin(origin)}>{copy.settings.remove}</button>
+            </div>
+          ))}
+        </section>
+        <section className="trusted-origins" aria-labelledby="panel-trusted-origins-title">
+          <div>
+            <span id="panel-trusted-origins-title">{copy.settings.panelTrustedOrigins}</span>
+            <small>{copy.settings.panelTrustedOriginsHelp}</small>
+          </div>
+          <div className="trusted-origin-add">
+            <input
+              aria-label={copy.settings.panelTrustedOriginInput}
+              value={panelTrustedOriginInput}
+              onChange={(event) => setPanelTrustedOriginInput(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') addTrustedOrigin('panelTrustedActionOrigins') }}
+              placeholder="https://example.com / https://*.example.com"
+            />
+            <button disabled={normalizeWebOrigin(panelTrustedOriginInput) === null} onClick={() => addTrustedOrigin('panelTrustedActionOrigins')}>{copy.settings.add}</button>
+          </div>
+          {panelTrustedOriginInput.trim() !== '' && normalizeWebOrigin(panelTrustedOriginInput) === null && (
+            <p className="origin-error">{copy.settings.invalidOrigin}</p>
+          )}
+          {settings?.panelTrustedActionOrigins.length === 0 && <p>{copy.settings.noPanelTrustedOrigins}</p>}
+          {settings?.panelTrustedActionOrigins.map((origin) => (
+            <div className="trusted-origin" key={origin}>
+              <code>{origin}</code>
+              <button onClick={() => removeTrustedOrigin('panelTrustedActionOrigins', origin)} aria-label={copy.settings.removeOrigin(origin)}>{copy.settings.remove}</button>
             </div>
           ))}
         </section>

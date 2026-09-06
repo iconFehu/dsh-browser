@@ -79,9 +79,13 @@ export interface PanelCopy {
     trustedOrigins: string
     trustedOriginsHelp: string
     trustedOriginInput: string
+    panelTrustedOrigins: string
+    panelTrustedOriginsHelp: string
+    panelTrustedOriginInput: string
     add: string
     invalidOrigin: string
     noTrustedOrigins: string
+    noPanelTrustedOrigins: string
     remove: string
     removeOrigin: (origin: string) => string
     save: string
@@ -226,9 +230,9 @@ const EN: PanelCopy = {
     deny: 'Deny',
     allowOnce: 'Allow once',
     alwaysAllowReads: 'Always allow reads',
-    trustSession: 'Trust this domain for this session',
+    trustSession: 'No confirmation while chatting',
     readFootnote: 'Esc to deny · You can disable automatic reading in Settings at any time',
-    actionFootnote: 'Esc to deny · Temporary trust ends when the side panel closes · Typed content is never shown',
+    actionFootnote: 'Esc to deny · Chat-scoped no-confirmation is kept until you remove it and applies only while the side panel is open · Typed content is never shown',
   },
   tool: {
     running: 'Working on page',
@@ -301,12 +305,16 @@ const EN: PanelCopy = {
     approvalNotificationsHelp: 'Notify you when an approval arrives while the side panel is closed',
     autoResumeSession: "Resume this page's conversation",
     autoResumeSessionHelp: 'Reopen the conversation associated with this tab and page path; other pages start a new conversation',
-    trustedOrigins: 'Always-allowed domains',
-    trustedOriginsHelp: 'The approval dialog can trust a domain for the current side-panel session only. Domains added here permanently skip action confirmation when every known origin is trusted. Wildcards include the base domain and subdomains, and stay scoped to their scheme and port; `*.example.com` defaults to HTTPS.',
-    trustedOriginInput: 'Domain to always trust (e.g. https://example.com or https://*.example.com)',
+    trustedOrigins: 'Permanently allowed domains',
+    trustedOriginsHelp: 'Domains here permanently skip action confirmation when every known origin is trusted — even while the side panel is closed. Wildcards include the base domain and subdomains, and stay scoped to their scheme and port; `*.example.com` defaults to HTTPS.',
+    trustedOriginInput: 'Domain to trust permanently (e.g. https://example.com or https://*.example.com)',
+    panelTrustedOrigins: 'Chat-scoped allowed domains',
+    panelTrustedOriginsHelp: 'Domains here skip action confirmation only while a side panel conversation is open. They stay stored when the panel closes (just temporarily inactive) and reapply when it reopens; remove them here at any time. Same wildcard rules as permanent domains.',
+    panelTrustedOriginInput: 'Domain to trust while chatting (e.g. https://example.com or https://*.example.com)',
     add: 'Add',
     invalidOrigin: 'Enter an http:// or https:// origin, or a wildcard such as https://*.example.com.',
-    noTrustedOrigins: 'No domains are currently trusted.',
+    noTrustedOrigins: 'No permanently allowed domains.',
+    noPanelTrustedOrigins: 'No chat-scoped allowed domains yet. Use “No confirmation while chatting” in an approval dialog to add one.',
     remove: 'Remove',
     removeOrigin: (origin) => `Remove ${origin}`,
     save: 'Save & Connect',
@@ -451,9 +459,9 @@ const ZH: PanelCopy = {
     deny: '拒绝',
     allowOnce: '仅允许这一次',
     alwaysAllowReads: '始终允许读取',
-    trustSession: '本次会话信任此域',
+    trustSession: '对话期间免确认此域',
     readFootnote: 'Esc 拒绝 · 可随时在设置中关闭自动读取',
-    actionFootnote: 'Esc 拒绝 · 关闭侧栏后临时信任失效 · 输入内容不会显示',
+    actionFootnote: 'Esc 拒绝 · 对话期间免确认会保留到手动移除，且仅在侧栏打开时生效 · 输入内容不会显示',
   },
   tool: {
     running: '正在操作页面',
@@ -527,11 +535,15 @@ const ZH: PanelCopy = {
     autoResumeSession: '续接当前页面会话',
     autoResumeSessionHelp: '重新打开当前标签页此页面的会话；其他页面会新建会话',
     trustedOrigins: '永久免确认域名',
-    trustedOriginsHelp: '审批框可只信任本次侧栏会话。这里添加的域名仅在所有已知来源均受信任时免除操作确认。通配符包含主域及其子域，并严格区分协议和端口；`*.example.com` 默认使用 HTTPS。',
+    trustedOriginsHelp: '这里的域名在所有已知来源均受信任时免除操作确认，且永久生效——即使侧栏关闭也有效。通配符包含主域及其子域，并严格区分协议和端口；`*.example.com` 默认使用 HTTPS。',
     trustedOriginInput: '要永久信任的域名（如 https://example.com 或 https://*.example.com）',
+    panelTrustedOrigins: '对话期间免确认域名',
+    panelTrustedOriginsHelp: '这里的域名仅当侧栏对话开启时免除操作确认。关闭侧栏后条目不会消失，只是暂时不生效；重新打开侧栏即恢复，可随时在此移除。通配符规则与永久域名相同。',
+    panelTrustedOriginInput: '要在对话期间信任的域名（如 https://example.com 或 https://*.example.com）',
     add: '添加',
     invalidOrigin: '请输入 http://、https:// 来源或 https://*.example.com 形式的通配符。',
-    noTrustedOrigins: '尚未信任任何域名。',
+    noTrustedOrigins: '尚未配置永久免确认域名。',
+    noPanelTrustedOrigins: '尚未配置对话期间免确认域名。可在审批弹窗中选「对话期间免确认此域」来添加。',
     remove: '移除',
     removeOrigin: (origin) => `移除 ${origin}`,
     save: '保存并连接',

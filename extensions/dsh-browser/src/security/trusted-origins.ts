@@ -41,6 +41,22 @@ export function originMatchesTrusted(origin: string, trusted: Iterable<string>):
 }
 
 /**
+ * The authorization gate over the two no-confirmation tiers. Permanent trust
+ * always participates; the chat-scoped allowlist participates only while a
+ * side panel conversation is open (`panelOpen`), even though its entries stay
+ * stored while the panel is closed.
+ */
+export function actionCoveredByTrustedTiers(
+  prompt: ApprovalPrompt,
+  panelOpen: boolean,
+  permanent: Iterable<string>,
+  panelScoped: Iterable<string>,
+): boolean {
+  if (!panelOpen) return actionCoveredByTrustedOrigins(prompt, permanent)
+  return actionCoveredByTrustedOrigins(prompt, permanent, panelScoped)
+}
+
+/**
  * Skip an action prompt only when its full destination boundary is known.
  * Cross-origin browser_navigate names both origins; history and invalid URLs
  * deliberately remain untrusted because their destination is not represented.
