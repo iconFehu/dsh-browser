@@ -73,6 +73,7 @@ import { FocusedWindowTracker } from './focused-window.ts'
 import { SelectionTracker, type SelectionSource } from './selection.ts'
 import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
 import { ApprovalCoordinator, type ApprovalRequestResult } from './approval-coordinator.ts'
+import { cdpObservation } from './cdp/instance.ts'
 import {
   LEGACY_RECENT_SESSION_STORAGE_KEY,
   PAGE_SESSION_CONTEXT_STORAGE_KEY,
@@ -225,6 +226,7 @@ async function loadSettings(): Promise<Settings> {
 async function persistSettings(next: Partial<Settings>): Promise<void> {
   settings = normalizeSettings({ ...settings, ...next })
   await chrome.storage.local.set({ [STORAGE_KEY]: settings })
+  cdpObservation.setDeveloperMode(settings.cdpEnabled)
 }
 
 function normalizeSettings(candidate: Settings): Settings {
@@ -253,6 +255,7 @@ let settingsLoaded = false
 const settingsReady = loadSettings().then((loaded) => {
   settings = loaded
   settingsLoaded = true
+  cdpObservation.setDeveloperMode(settings.cdpEnabled)
 })
 
 function armBridgeKeepalive(): void {
@@ -1180,6 +1183,7 @@ chrome.runtime.onConnect.addListener((port) => {
     timer: ReturnType<typeof setTimeout>
   }>()
   panelPorts.add(port)
+  cdpObservation.setPanelActive(true)
   if (wasIdle) armBridgeKeepalive()
   void settingsReady.then(syncSelectionWatch)
   void settingsReady.then(() => {
@@ -1445,6 +1449,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (panelPorts.size === 0) {
       bridgeStartRevision += 1
       bridge?.suspendReconnect()
+      cdpObservation.setPanelActive(false)
       // The chat-scoped allowlist stays stored (it reapplies when a panel
       // reopens); only ephemeral runtime state is torn down here.
       approvals.notifyPending()
