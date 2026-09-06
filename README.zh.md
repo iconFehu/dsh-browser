@@ -185,6 +185,7 @@ pnpm run test
 pnpm run check:runtime
 pnpm run test:smoke
 pnpm run test:publish
+pnpm run test:git-install
 
 pnpm --filter @yuxianglin/dsh-bridge-browser run build
 pnpm --filter @yuxianglin/dsh-bridge-browser run typecheck
@@ -200,7 +201,7 @@ pnpm --filter dsh-browser-extension run test
 - 启动前桥接插件必须已有 `lib/` 供 Loader 加载；`scripts/install.sh` 和根目录 `pnpm run build` 都会先构建插件再构建扩展。
 - `@deepseek-ai/dsh` 与桥接插件的依赖固定在同一条经过验证的公开发布线上；升级时必须同时更新 manifest、锁文件并重跑根目录检查。
 
-`check:runtime` 检查实际解析的 DSH 依赖和锁文件；`test:smoke` 使用临时 DSH home 启动真实 web 宿主，验证桥接和重启后的会话读取，无需模型密钥。`test:publish` 打包 bridge，用真实 `dsh plugin` 命令把该 tarball 注册进全新的 `web` profile 并启动宿主——与 `pnpm publish` 交付的是同一份字节。CI 在干净安装后运行这些检查；`publish-bridge.yml` 可在 `bridge-v*` 标签或手动触发时发布到 npm。
+`check:runtime` 检查实际解析的 DSH 依赖和锁文件；`test:smoke` 使用临时 DSH home 启动真实 web 宿主，验证桥接和重启后的会话读取，无需模型密钥。`test:publish` 打包 bridge，用真实 `dsh plugin` 命令把该 tarball 注册进全新的 `web` profile 并启动宿主——与 `pnpm publish` 交付的是同一份字节。`test:git-install` 以 git 通道做同样的事：把本 checkout 全新 clone 一份，经 `dsh plugin --profile web add …#path:/packages/browser/bridge-browser` 注册，含 pnpm 对 git 依赖要求的 allowBuilds 放行。CI 在干净安装后运行这些检查；`publish-bridge.yml` 可在 `bridge-v*` 标签或手动触发时发布到 npm。
 
 如果遇到 `cache.hydratePrepared is not a function`，更新仓库后重新运行 `pnpm install --frozen-lockfile` 和 `pnpm run build`，再重启 `pnpm start`。无需删除会话数据或清空全局缓存。
 

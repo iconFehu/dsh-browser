@@ -34,6 +34,7 @@ jobs:
       - run: pnpm run build
       - run: pnpm run test:smoke
       - run: pnpm run test:publish
+      - run: pnpm run test:git-install
       - name: Validate shell installer syntax
         if: runner.os == 'Linux'
         run: bash -n scripts/install.sh

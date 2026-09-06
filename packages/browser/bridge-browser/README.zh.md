@@ -34,6 +34,14 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 web
 
 卸载用 `npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-bridge-browser`，然后按主指南「方式 B」把扩展加载进 Chrome 使用侧边栏。首次发布之前，可用同样命令注册发布包内的 `*.tgz`（`… add -w file:路径/包.tgz`），或用下方安装器。
 
+**Git 安装（发布前 / fork 场景）。** 包的 `prepare` 脚本会在安装时构建 `lib/`，因此 git 源与 registry 源行为一致。`dsh plugin` 把参数转发给 pnpm，pnpm 通过 `#path:` 参数解析本 monorepo 内的包：
+
+```sh
+dsh plugin --profile web add -w "github:iconFehu/dsh-browser#v0.1.4&path:/packages/browser/bridge-browser"
+```
+
+pnpm 默认拦截 git 依赖的构建脚本：第一次运行会失败并打印精确的 `allowBuilds` 键。把该键**加引号**（键内 URL 含 `:`）追加到 profile 的 `pnpm-workspace.yaml` 后重跑即可。键内嵌解析到的 commit，因此批准新 commit 需要新增一条。
+
 **安装器（方式 C，源码/离线）。** 远程安装器会下载一个由脚本托管的 workspace，构建插件，并将它的官方 bundle 注册到本机 dsh 的 `web` profile。该方式无需 Git，也无需提前 clone：
 
 ```sh

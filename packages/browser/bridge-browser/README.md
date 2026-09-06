@@ -34,6 +34,14 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 web
 
 Remove with `npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-bridge-browser`. Then load the extension (main guide, Method B) and use the side panel. Until the first publish lands, register the `*.tgz` from a release bundle the same way (`… add -w file:path/to.tgz`) or use the installer below.
 
+**Git install (before publishing / for forks).** The package's `prepare` script builds `lib/` during install, so a git source behaves like a registry source. `dsh plugin` forwards its arguments to pnpm, which resolves the package inside this monorepo through the `#path:` parameter:
+
+```sh
+dsh plugin --profile web add -w "github:iconFehu/dsh-browser#v0.1.4&path:/packages/browser/bridge-browser"
+```
+
+pnpm blocks build scripts of git dependencies by default: the first run fails and prints the exact `allowBuilds` key. Add that key — quoted, because it contains `:` from the URL — to the profile's `pnpm-workspace.yaml` and re-run. The key embeds the resolved commit, so approving a newer commit requires a fresh entry.
+
 **Installer (Method C, source/offline).** The remote installer downloads an installer-managed workspace, builds the plugin, and registers its official bundle in the local dsh `web` profile. It requires neither Git nor a local clone:
 
 ```sh

@@ -1,4 +1,4 @@
 # Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
 # side as of the last confirmed-consistent state. Both languages carry equal authority.
-2026-09-06-npm-publish-three-way-install.md: 24954a050cd9c94f6e4acb739b011172c71a967f
-2026-09-06-npm-publish-three-way-install.zh.md: 73553b2273917351bf4683e0500c3bd4d244467d
+2026-09-06-npm-publish-three-way-install.md: ee28ae3823d2461db349555c3a26576ed785a6cc
+2026-09-06-npm-publish-three-way-install.zh.md: 809b91d615ba5ed19c3a6c3316b1671cf48b4120

@@ -185,6 +185,7 @@ pnpm run test
 pnpm run check:runtime
 pnpm run test:smoke
 pnpm run test:publish
+pnpm run test:git-install
 
 pnpm --filter @yuxianglin/dsh-bridge-browser run build
 pnpm --filter @yuxianglin/dsh-bridge-browser run typecheck
@@ -200,7 +201,7 @@ Notes:
 - The bridge plugin must have a built `lib/` before startup because the loader consumes it; both `scripts/install.sh` and the root `pnpm run build` build the plugin before the extension.
 - The dependencies of `@deepseek-ai/dsh` and the bridge plugin are pinned to the same tested public release line. An upgrade must update the manifests and lockfile together and rerun the root checks.
 
-`check:runtime` checks the resolved DSH dependencies and lockfile; `test:smoke` starts the real web host in a temporary DSH home and verifies the bridge and session reads after a restart, without model credentials. `test:publish` packs the bridge, registers that tarball into a fresh `web` profile with the real `dsh plugin` command, and boots a host against it — the same bytes `pnpm publish` ships. CI runs these checks after a clean installation; `publish-bridge.yml` can publish to npm from a `bridge-v*` tag or manual dispatch.
+`check:runtime` checks the resolved DSH dependencies and lockfile; `test:smoke` starts the real web host in a temporary DSH home and verifies the bridge and session reads after a restart, without model credentials. `test:publish` packs the bridge, registers that tarball into a fresh `web` profile with the real `dsh plugin` command, and boots a host against it — the same bytes `pnpm publish` ships. `test:git-install` does the same over the git channel: a fresh clone of this checkout registers through `dsh plugin --profile web add …#path:/packages/browser/bridge-browser`, including the allowBuilds approval pnpm requires for git dependencies. CI runs these checks after a clean installation; `publish-bridge.yml` can publish to npm from a `bridge-v*` tag or manual dispatch.
 
 If you encounter `cache.hydratePrepared is not a function`, update the repository, rerun `pnpm install --frozen-lockfile` and `pnpm run build`, then restart `pnpm start`. Session data and the global package cache can be kept.
 

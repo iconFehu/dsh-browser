@@ -29,7 +29,7 @@ Status: implemented
 
 ## Verification
 
-`pnpm run test:publish`（`scripts/smoke-publish.mjs`）用 `pnpm pack` 打包 bridge，把产物 tarball 通过真实 `dsh plugin --profile web add -w file:…` 路径注册进全新临时 home 的 `web` profile，启动真实 web 宿主，要求 `/ext/bridge-config` 加 token 认证 WS `hello`/`hello.ok` 往返与 session RPC 成功，再执行 `dsh plugin … remove`。这证明 npm 将安装的正是这些字节。`runtime.yml` 在 Linux/Windows 干净安装 CI 中运行它；`release.yml` 在打包前运行并新增对已改安装器的 PowerShell 语法检查；`publish-bridge.yml` 用其把关工作流发布。
+`pnpm run test:publish`（`scripts/smoke-publish.mjs`）用 `pnpm pack` 打包 bridge，把产物 tarball 通过真实 `dsh plugin --profile web add -w file:…` 路径注册进全新临时 home 的 `web` profile，启动真实 web 宿主，要求 `/ext/bridge-config` 加 token 认证 WS `hello`/`hello.ok` 往返与 session RPC 成功，再执行 `dsh plugin … remove`。这证明 npm 将安装的正是这些字节。`pnpm run test:git-install`（`scripts/smoke-git-install.mjs`）在 git 通道验证同一契约：把本 checkout clone 一份当本地 remote，经真实 `dsh plugin` 命令注册 `git+file://…/remote#path:/packages/browser/bridge-browser`，完成 pnpm 对 git 依赖要求的 `allowBuilds` 放行，并启动宿主直到 `hello.ok`。该通道可行是因为包新增了 `prepare` 脚本（commit "feat(bridge): build lib/ on git installs via prepare"），在安装时构建被 gitignore 的 `lib/`——pnpm 对 git 依赖从不运行 `prepack`。`runtime.yml` 在 Linux/Windows 干净安装 CI 中运行两个冒烟；`release.yml` 在打包前运行 `test:publish` 并新增对已改安装器的 PowerShell 语法检查；`publish-bridge.yml` 用其把关工作流发布。
 
 ## Consequences
 
