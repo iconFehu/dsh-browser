@@ -1494,6 +1494,10 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
+  // A controlled tab that navigates off http(s) can no longer host CDP.
+  if (cdpObservation.attachedTab() === tabId && tab.url !== undefined && !/^https?:\/\//i.test(tab.url)) {
+    void cdpObservation.retract()
+  }
   void affinityReady.then(() => {
     if (!tabAffinity.tracks(tabId)) return
     const summary = summarizeTab(tab)
@@ -1503,6 +1507,7 @@ chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
 
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
   // The old document is gone even though Chrome transfers the tab identity.
+  if (cdpObservation.attachedTab() === removedTabId) void cdpObservation.retract()
   broadcastSelections(selections.clearTab(removedTabId))
   void pageSessionContexts.ready.then(() => {
     pageSessionContexts.replaceTab(removedTabId, addedTabId)
@@ -1529,6 +1534,7 @@ chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  if (cdpObservation.attachedTab() === tabId) void cdpObservation.retract()
   broadcastSelections(selections.clearTab(tabId))
   void pageSessionContexts.ready.then(() => {
     pageSessionContexts.removeTab(tabId)

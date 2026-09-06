@@ -13,6 +13,8 @@ const PAGE_READS = new Set([
   'browser_network',
   'browser_performance',
   'browser_dom',
+  'browser_screenshot',
+  'browser_export_pdf',
 ])
 const STATE_CHANGING_ACTIONS = new Set([
   'browser_click',

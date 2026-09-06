@@ -26,6 +26,8 @@ export const CDP_OBSERVATION_TOOLS: ReadonlySet<string> = new Set([
   'browser_network',
   'browser_performance',
   'browser_dom',
+  'browser_screenshot',
+  'browser_export_pdf',
 ])
 
 export interface CdpObservationDeps {
@@ -179,6 +181,10 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
         const text = await readDomDeep(deps.manager)
         return { ok: true, result: { text: wrapUntrustedContent(text, OBSERVATION_TEXT_MAX) } }
       }
+      case 'browser_screenshot':
+      case 'browser_export_pdf': {
+        return await exportCapture(deps, call.name)
+      }
       default:
         return unavailableError('action-failed', `Unknown observation tool "${call.name}".`)
     }
@@ -187,6 +193,47 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
       return unavailableError('feature-unavailable', error.message)
     }
     throw error
+  }
+}
+
+/**
+ * Capture the controlled tab as a PNG (viewport) or PDF and start a save
+ * dialog for it. The capture is exported as a local artifact for the user to
+ * inspect or share; the model only receives a confirmation text, keeping the
+ * tool channel text-only.
+ */
+async function exportCapture(deps: CdpObservationDeps, tool: 'browser_screenshot' | 'browser_export_pdf'): Promise<ToolAnswer> {
+  const downloads = (globalThis as { chrome?: { downloads?: unknown } }).chrome?.downloads
+  if (downloads === undefined || typeof downloads !== 'object' || typeof (downloads as { download?: unknown }).download !== 'function') {
+    return unavailableError('feature-unavailable', 'Saving files is not available in this browser; exports require the downloads permission.')
+  }
+  const isPdf = tool === 'browser_export_pdf'
+  const method = isPdf ? 'Page.printToPDF' : 'Page.captureScreenshot'
+  const params = isPdf
+    ? { printBackground: true, preferCSSPageSize: true }
+    : { format: 'png' }
+  const raw = await deps.manager.send(method, params) as { data?: string }
+  if (typeof raw.data !== 'string' || raw.data === '') {
+    return unavailableError('action-failed', `${tool} returned no capture data; retry once the page settles.`)
+  }
+  const mime = isPdf ? 'application/pdf' : 'image/png'
+  const extension = isPdf ? 'pdf' : 'png'
+  const dataUrl = `data:${mime};base64,${raw.data}`
+  const filename = `dsh-browser-${isPdf ? 'page' : 'screenshot'}-${Date.now()}.${extension}`
+  const downloadId = await new Promise<number>((resolve, reject) => {
+    (downloads as { download(options: { url: string; filename: string; saveAs: boolean }, callback: (id: number) => void): void })
+      .download({ url: dataUrl, filename, saveAs: true }, (id) => {
+        const error = chrome.runtime.lastError
+        if (error !== undefined) reject(new Error(String(error.message ?? error)))
+        else resolve(id)
+      })
+  })
+  const kib = Math.max(1, Math.round((raw.data.length * 3) / 4 / 1024))
+  return {
+    ok: true,
+    result: {
+      text: `${isPdf ? 'PDF export' : 'Screenshot'} of the controlled tab captured (${kib} KB) and a save dialog was opened for "${filename}" (download id ${downloadId}). The image/PDF is a local file for you to inspect or attach; it was not sent to the model.`,
+    },
   }
 }
 

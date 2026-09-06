@@ -68,6 +68,8 @@ export const BROWSER_TOOL_NAMES = [
   'browser_network',
   'browser_performance',
   'browser_dom',
+  'browser_screenshot',
+  'browser_export_pdf',
 ] as const
 
 /**
@@ -316,6 +318,24 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
     execute: (_args, exec) => call(exec, 'browser_dom', {}),
   })
 
+  const screenshot = (): ToolDefinition => defineTool({
+    name: 'browser_screenshot',
+    description: OBSERVE_NOTE + 'Capture the controlled tab as a PNG and open a save dialog for the file. The image is saved locally for you to inspect or attach; it is not sent to the model.',
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_screenshot', {}),
+  })
+
+  const exportPdf = (): ToolDefinition => defineTool({
+    name: 'browser_export_pdf',
+    description: OBSERVE_NOTE + 'Print the controlled tab to a PDF (backgrounds on, CSS page sizes respected) and open a save dialog for the file. The PDF is saved locally for you to inspect or attach; it is not sent to the model.',
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_export_pdf', {}),
+  })
+
   return [
     snapshot(),
     click(),
@@ -333,5 +353,7 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
     network(),
     performance(),
     dom(),
+    screenshot(),
+    exportPdf(),
   ]
 }
