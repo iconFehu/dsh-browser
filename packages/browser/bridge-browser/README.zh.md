@@ -1,6 +1,6 @@
 # @yuxianglin/dsh-bridge-browser
 
-Windows Desktop 预构建安装及首次设置请参阅[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)。下方标准 web 命令需先下载完整 Windows Release 包并解压。
+Windows Desktop 预构建安装与三种安装方式见[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)：标准 web 的 CLI 注册、预构建扩展 ZIP、一键安装器。
 
 [English](README.md) | 中文
 
@@ -23,7 +23,18 @@ dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认�
 
 ## 使用
 
-远程安装器会下载一个由脚本托管的 workspace，构建插件，并将它的官方 bundle 注册到本机 dsh 的 `web` profile。该方式无需 Git，也无需提前 clone：
+bridge 是 dsh 插件：注册进 `web` profile 后，下一次 `dsh web` 启动即挂载 `/ext/bridge` 与 `browser_*` 工具。注册是「每个 DSH home × 每个 profile」一次的动作——profile 已列出该插件时下方安装器会跳过。
+
+**CLI 注册（方式 A，标准 web）。** `@yuxianglin/dsh-bridge-browser@0.0.5` 已发布到 npm。有 Node.js 与固定版本 dsh CLI 即可：
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web add -w @yuxianglin/dsh-bridge-browser@0.0.5
+npx @deepseek-ai/dsh@0.1.2-rc.1 web
+```
+
+卸载用 `npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-bridge-browser`，然后按主指南「方式 B」把扩展加载进 Chrome 使用侧边栏。首次发布之前，可用同样命令注册发布包内的 `*.tgz`（`… add -w file:路径/包.tgz`），或用下方安装器。
+
+**安装器（方式 C，源码/离线）。** 远程安装器会下载一个由脚本托管的 workspace，构建插件，并将它的官方 bundle 注册到本机 dsh 的 `web` profile。该方式无需 Git，也无需提前 clone：
 
 ```sh
 curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
@@ -37,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
 cd $HOME\.dsh\dsh-browser; pnpm start
 ```
 
-开发者也可以 clone 仓库，在 checkout 中依次运行 `./scripts/install.sh` 和 `pnpm start`。本地模式直接使用当前分支，不会下载或覆盖源码。两种安装模式都会注册同一个 profile bundle；构建工具只从选定的 workspace 解析，绝不读取父 checkout 或父目录的 `node_modules`。
+开发者也可以 clone 仓库，在 checkout 中依次运行 `./scripts/install.sh` 和 `pnpm start`。本地模式直接使用当前分支，不会下载或覆盖源码。所有安装模式注册同一个 profile bundle；构建工具只从选定的 workspace 解析，绝不读取父 checkout 或父目录的 `node_modules`。
 
 当前工作区固定使用 dsh 0.1.2-rc.1，也是最低支持版本；不再支持旧版 DSH：
 

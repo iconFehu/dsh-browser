@@ -24,9 +24,26 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm test
       - run: pnpm build
+      # The publish smoke installs the packed bridge tarball into a fresh web
+      # profile and boots a real host, so a release tag can never ship a
+      # tarball that would not register and load as a published plugin.
+      - run: pnpm run test:publish
       - run: ./scripts/package-release.ps1
       - run: ./scripts/test-installer.ps1 -BundleDirectory ./release
         shell: powershell
+      - name: Validate Windows installer syntax
+        shell: powershell
+        run: |
+          $files = @('scripts/install.ps1', 'scripts/install-web.ps1', 'scripts/install-desktop.ps1')
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $env:GITHUB_WORKSPACE $file), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parse errors in $file"
+            }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: dsh-browser-release

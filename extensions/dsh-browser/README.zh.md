@@ -1,6 +1,6 @@
 # dsh 浏览器操作扩展（Chrome 与 Firefox MV3）
 
-Windows Desktop 预构建安装及首次设置请参阅[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)。下方标准 web 命令需先下载完整 Windows Release 包并解压。
+Windows Desktop 预构建安装与三种安装方式见[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)：标准 web 的 CLI 注册、预构建扩展 ZIP、一键安装器。
 
 [English](README.md) | 中文
 
@@ -52,47 +52,33 @@ pnpm --filter dsh-browser-extension run test
 
 ## 安装与使用
 
-推荐的零配置命令无需安装 Git，也无需提前 clone：
+扩展是**浏览器组件**：通过加载已解压目录（Chrome）或临时附加组件（Firefox）安装，与 npm 命令无关。它连接的桥插件是另一个组件，用 dsh 命令行注册。
 
-1. **构建并安装扩展**：
+1. **加载扩展（Chrome，方式 B）。** 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载与发布版本匹配的预构建 `dsh-browser-chrome-vX.Y.Z.zip`（每个发布标签固定对应归档）。解压到固定目录，打开 `chrome://extensions`，开启**开发者模式**，点击**加载已解压的扩展程序**，选择该目录。更新时把新版 ZIP 解压覆盖到同一目录，再点击扩展卡片上的**重新加载**；扩展本身也会检查已发布的 Release。
+
+   一键安装器（方式 C）为标准 `web` 运行时自动完成同样结果：把托管 workspace 下载到 `~/.dsh/dsh-browser`，构建桥插件并注册到本机 `web` profile，构建扩展并把产物复制到稳定目录 `~/.dsh/browser-extension`，然后打开 `chrome://extensions`：
 
    ```sh
    curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
    ```
 
-   Windows 请改在 PowerShell 中运行：
+   Windows 在完整发布包中运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1`（Desktop）或 `.\install.ps1 -Runtime Web`。clone 得到的 checkout 也使用同一个安装器，而且不会下载或覆盖源码：`git clone https://github.com/iconFehu/dsh-browser.git && cd dsh-browser && ./scripts/install.sh`（Windows 运行 `.\scripts\install.ps1`）。profile 已列出该插件时注册会自动跳过，CLI 安装之后再跑安装器是安全的。
 
-   ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
-   ```
+   Firefox：在 checkout 中运行 `pnpm --filter dsh-browser-extension run build:firefox`，然后从 `about:debugging#/runtime/this-firefox` 加载 `extensions/dsh-browser/dist-firefox/manifest.json`。
 
-   脚本会把托管 workspace 下载到 `~/.dsh/dsh-browser`，构建桥插件，把它的官方 bundle 注册到本机 dsh 的 `web` profile，再构建扩展并把产物复制到稳定目录 `~/.dsh/browser-extension`，然后打开 `chrome://extensions`。开启开发者模式，选择「加载已解压的扩展程序」，加载扩展目录。再次运行该命令会更新托管安装。
-
-   clone 得到的 checkout 也使用同一个安装器，而且不会下载或覆盖源码：
+2. **启动 dsh 并挂载桥插件**。标准 web 用户先注册一次 bridge（主指南「方式 A」）：
 
    ```sh
-   git clone https://github.com/iconFehu/dsh-browser.git
-   cd dsh-browser
-   ./scripts/install.sh
+   npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web add -w @yuxianglin/dsh-bridge-browser@0.0.5
    ```
 
-   Windows checkout 请运行 `.\scripts\install.ps1`。
-
-2. **启动 dsh 并挂载桥插件**。可以使用 workspace 固定的运行时：
+   再启动固定版本：
 
    ```sh
-   cd ~/.dsh/dsh-browser && pnpm start
+   npx @deepseek-ai/dsh@0.1.2-rc.1 web
    ```
 
-   如果使用 clone，请改为在仓库根目录运行 `pnpm start`。
-
-   或在正式发布后使用受支持的精确公开版本：
-
-   ```sh
-   npx @deepseek-ai/dsh@0.1.2 web
-   ```
-
-   两种命令都会从本机 `web` profile 加载同一个 bundle。默认端口为 3080；如被占用，可追加 `--port <port>`。
+   托管安装与 checkout 用户改为在 `~/.dsh/dsh-browser` 或仓库根目录运行 `pnpm start`。两种方式都会从本机 `web` profile 加载同一个 bundle。默认端口为 3080；如被占用，可追加 `--port <port>`。
 
    **DSH Desktop 用户**：桌面版默认让系统随机分配本地 Web 端口（`dsh-desktop.port: 0`），自动探测无法预知随机端口。请在桌面版设置中把端口固定为 `43189`（见 [deepseek-harness-desktop 用户指南](https://github.com/anywhere-labs/deepseek-harness-desktop/blob/master/docs/user-guide.md)），扩展的自动探测会覆盖该端口；或直接在侧栏设置中手动填写 `http://127.0.0.1:<端口>`。
 

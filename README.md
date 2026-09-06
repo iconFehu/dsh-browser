@@ -15,29 +15,61 @@ Browser operation remains text-only: pages become structured text with a numbere
 
 ## Quick install
 
-### Windows + DSH Desktop (recommended)
+Two independent components, each installed its own way:
 
-Download **dsh-browser-windows.zip** from [Releases](https://github.com/iconFehu/dsh-browser/releases), extract the entire bundle, then run:
+| Component | What it is | How it installs |
+|---|---|---|
+| **Bridge plugin** — `@yuxianglin/dsh-bridge-browser` | dsh plugin that mounts the token-authenticated `/ext/bridge` and the text-only `browser_*` tools | Command line: `dsh plugin --profile web add` |
+| **Chrome/Firefox extension** | MV3 side panel that drives your controlled tab through the bridge | Browser: load an unpacked folder from `chrome://extensions` |
+
+| Environment | Bridge plugin | Extension |
+|---|---|---|
+| Standard `dsh web` | Method A (CLI) or Method C | Method B or C |
+| DSH Desktop (bridge built in) | none — Desktop provides its own bridge | Method B or C |
+
+### Method A — pure CLI (standard dsh web)
+
+Requires Node.js with the pinned dsh CLI and the published bridge package:
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web add -w @yuxianglin/dsh-bridge-browser@0.0.5
+npx @deepseek-ai/dsh@0.1.2-rc.1 web
+```
+
+To remove:
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-bridge-browser
+```
+
+> [!NOTE]
+> Method A needs `@yuxianglin/dsh-bridge-browser@0.0.5` published to the npm registry. Until the first publish lands, use Method C, or register the `*.tgz` shipped inside the release bundle the same way (`dsh plugin --profile web add -w file:…`).
+
+### Method B — install the extension ZIP
+
+1. Download `dsh-browser-chrome-v0.1.4.zip` from [Releases](https://github.com/iconFehu/dsh-browser/releases) — each release tag pins its matching archive.
+2. Extract it to a stable folder.
+3. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select that folder.
+
+To update, re-extract the newer ZIP over the same folder and click **Reload** on the extension card. The extension itself also checks published releases.
+
+### Method C — one-command installer (combines both)
+
+**Windows + DSH Desktop (recommended):** download **dsh-browser-windows.zip** from [Releases](https://github.com/iconFehu/dsh-browser/releases), extract the entire bundle, then run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Desktop installation uses prebuilt files without Git, Node or pnpm and does not register another Desktop bridge. On first use, enable developer mode at `chrome://extensions`, choose Load unpacked, and select the directory printed by the installer.
+Desktop installation uses prebuilt files without Git, Node or pnpm and does not register another Desktop bridge. On first use, enable developer mode at `chrome://extensions`, choose **Load unpacked**, and select the directory printed by the installer. Start DSH Desktop, select **compatibility mode**, and enable **browser access** in its settings. Leave the extension bridge address empty and open its sidebar to connect automatically. First-time Chrome loading and Desktop access settings require user interaction.
 
-Start DSH Desktop, select **compatibility mode**, and enable **browser access** in its settings. Leave the extension bridge address empty and open its sidebar to connect automatically. First-time Chrome loading and Desktop access settings require user interaction.
-
-### macOS / Linux and standard dsh web
-
-Source installation requires Node.js `^22.19` or `>=24`, pnpm, and Chrome 116+ or Firefox 140+:
+**macOS / Linux and standard dsh web** (source install): requires Node.js `^22.19` or `>=24`, pnpm, and Chrome 116+ or Firefox 140+:
 
 ```sh
 curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
 ```
 
-For standard web on Windows, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web` from the complete bundle. It requires development dependencies and builds/registers the bridge in the web profile.
-
-This project does not publish the unscoped `dsh-browser` npm package. Before the first release is published, use the locally delivered prebuilt ZIP.
+For standard web on Windows, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web` from the complete bundle. It needs development dependencies and builds/registers the bridge in the web profile, skipping registration when the bridge is already present.
 
 ## Performance
 
@@ -152,6 +184,7 @@ pnpm run typecheck
 pnpm run test
 pnpm run check:runtime
 pnpm run test:smoke
+pnpm run test:publish
 
 pnpm --filter @yuxianglin/dsh-bridge-browser run build
 pnpm --filter @yuxianglin/dsh-bridge-browser run typecheck
@@ -167,7 +200,7 @@ Notes:
 - The bridge plugin must have a built `lib/` before startup because the loader consumes it; both `scripts/install.sh` and the root `pnpm run build` build the plugin before the extension.
 - The dependencies of `@deepseek-ai/dsh` and the bridge plugin are pinned to the same tested public release line. An upgrade must update the manifests and lockfile together and rerun the root checks.
 
-`check:runtime` checks the resolved DSH dependencies and lockfile; `test:smoke` starts the real web host in a temporary DSH home and verifies the bridge and session reads after a restart, without model credentials. CI runs these checks after a clean installation.
+`check:runtime` checks the resolved DSH dependencies and lockfile; `test:smoke` starts the real web host in a temporary DSH home and verifies the bridge and session reads after a restart, without model credentials. `test:publish` packs the bridge, registers that tarball into a fresh `web` profile with the real `dsh plugin` command, and boots a host against it — the same bytes `pnpm publish` ships. CI runs these checks after a clean installation; `publish-bridge.yml` can publish to npm from a `bridge-v*` tag or manual dispatch.
 
 If you encounter `cache.hydratePrepared is not a function`, update the repository, rerun `pnpm install --frozen-lockfile` and `pnpm run build`, then restart `pnpm start`. Session data and the global package cache can be kept.
 

@@ -1,10 +1,13 @@
 {
   "name": "@yuxianglin/dsh-bridge-browser",
   "description": "Bridge plugin: token-authenticated WebSocket carrier for the browser extension plus text-only browser_* tools that drive the user's Chrome via that extension",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "author": "Yuxiang Lin",
   "license": "MIT",
-  "private": true,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -86,7 +89,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false",
-    "build": "tsc -b --pretty false && tsdown && node -e \"require('node:fs').copyFileSync('src/client.js','lib/client.js')\""
+    "build": "tsc -b --pretty false && tsdown && node -e \"require('node:fs').copyFileSync('src/client.js','lib/client.js')\"",
+    "prepack": "pnpm run build"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",

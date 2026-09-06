@@ -1,6 +1,6 @@
 # @yuxianglin/dsh-bridge-browser
 
-For Windows Desktop prebuilt installation, see the [main setup guide](https://github.com/iconFehu/dsh-browser#quick-install). Download and extract the complete Windows Release bundle before using the standard web command below.
+Windows Desktop prebuilt installation and the three install methods live in the [main setup guide](https://github.com/iconFehu/dsh-browser#quick-install): CLI registration for standard web, the prebuilt extension ZIP, and the one-command installers.
 
 English | [中文](README.zh.md)
 
@@ -23,7 +23,18 @@ Workspace grouping is best-effort. If the composition has no workspace domain, d
 
 ## Usage
 
-The remote installer downloads an installer-managed workspace, builds the plugin, and registers its official bundle in the local dsh `web` profile. It requires neither Git nor a local clone:
+The bridge is a dsh plugin: once it is registered into a `web` profile, the next `dsh web` boot mounts `/ext/bridge` and the `browser_*` tools. Registration is a per-home, per-profile action — the installers below skip it when the profile already lists the plugin.
+
+**CLI registration (Method A, standard web).** `@yuxianglin/dsh-bridge-browser@0.0.5` is published on npm. With Node.js and the pinned dsh CLI:
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web add -w @yuxianglin/dsh-bridge-browser@0.0.5
+npx @deepseek-ai/dsh@0.1.2-rc.1 web
+```
+
+Remove with `npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-bridge-browser`. Then load the extension (main guide, Method B) and use the side panel. Until the first publish lands, register the `*.tgz` from a release bundle the same way (`… add -w file:path/to.tgz`) or use the installer below.
+
+**Installer (Method C, source/offline).** The remote installer downloads an installer-managed workspace, builds the plugin, and registers its official bundle in the local dsh `web` profile. It requires neither Git nor a local clone:
 
 ```sh
 curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
@@ -37,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
 cd $HOME\.dsh\dsh-browser; pnpm start
 ```
 
-Developers can instead clone the repository and run `./scripts/install.sh` followed by `pnpm start` from that checkout. The local mode uses the current branch without downloading or overwriting source files. Both installation modes register the same profile bundle; build tools resolve only from the selected workspace and never from a parent checkout or parent `node_modules` directory.
+Developers can instead clone the repository and run `./scripts/install.sh` followed by `pnpm start` from that checkout. The local mode uses the current branch without downloading or overwriting source files. All installation modes register the same profile bundle; build tools resolve only from the selected workspace and never from a parent checkout or parent `node_modules` directory.
 
 The workspace pins dsh 0.1.2-rc.1, the minimum supported runtime. Older DSH releases are not supported:
 

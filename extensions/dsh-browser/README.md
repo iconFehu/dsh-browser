@@ -1,6 +1,6 @@
 # dsh Browser Control Extension (Chrome and Firefox MV3)
 
-For Windows Desktop prebuilt installation, see the [main setup guide](https://github.com/iconFehu/dsh-browser#quick-install). Download and extract the complete Windows Release bundle before using the standard web command below.
+Windows Desktop prebuilt installation and the three install methods live in the [main setup guide](https://github.com/iconFehu/dsh-browser#quick-install): CLI registration for standard web, the prebuilt extension ZIP, and the one-command installers.
 
 English | [中文](README.zh.md)
 
@@ -52,47 +52,33 @@ Run these commands from the repository root. Chrome outputs to `extensions/dsh-b
 
 ## Install and use
 
-The recommended zero-configuration command does not require Git or a local clone:
+The extension is a **browser component**: it is installed by loading an unpacked directory (Chrome) or a temporary add-on (Firefox) — never through an npm command. The bridge plugin it talks to is a separate component registered with `dsh` on the command line.
 
-1. **Build and install the extension**:
+1. **Load the extension (Chrome, Method B).** Download the prebuilt `dsh-browser-chrome-vX.Y.Z.zip` matching your release from [Releases](https://github.com/iconFehu/dsh-browser/releases) — each release tag pins its archive. Extract it to a stable folder, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select that folder. To update, re-extract the newer ZIP over the same folder and click **Reload** on the extension card; the extension also checks published releases itself.
+
+   The one-command installer (Method C) automates the same outcome for the standard `web` runtime: it downloads a managed workspace to `~/.dsh/dsh-browser`, builds the bridge plugin, registers it in the local `web` profile, builds the extension, copies the output to the stable directory `~/.dsh/browser-extension`, and opens `chrome://extensions`:
 
    ```sh
    curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
    ```
 
-   On Windows, run this in PowerShell instead:
+   On Windows run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1` (Desktop) or `.\install.ps1 -Runtime Web` from the complete bundle. A cloned checkout uses the same installer without downloading or overwriting source files: `git clone https://github.com/iconFehu/dsh-browser.git && cd dsh-browser && ./scripts/install.sh` (Windows: `.\scripts\install.ps1`). Registration is skipped when the profile already lists the plugin, so re-running after a CLI install is safe.
 
-   ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web
-   ```
+   Firefox: build it from a checkout (`pnpm --filter dsh-browser-extension run build:firefox`), then load `extensions/dsh-browser/dist-firefox/manifest.json` via `about:debugging#/runtime/this-firefox`.
 
-   The script downloads a managed workspace to `~/.dsh/dsh-browser`, builds the bridge plugin, registers its official bundle in the local dsh `web` profile, builds the extension, copies the output to the stable directory `~/.dsh/browser-extension`, and opens `chrome://extensions`. Enable Developer mode, choose Load unpacked, and select the extension directory. Running the command again updates the managed installation.
-
-   A cloned checkout uses the same installer without downloading or overwriting source files:
+2. **Start dsh with the bridge plugin mounted**. Standard web users register the bridge once (main guide, Method A):
 
    ```sh
-   git clone https://github.com/iconFehu/dsh-browser.git
-   cd dsh-browser
-   ./scripts/install.sh
+   npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web add -w @yuxianglin/dsh-bridge-browser@0.0.5
    ```
 
-   Windows checkouts run `.\scripts\install.ps1` instead.
-
-2. **Start dsh with the bridge plugin mounted**. Use either the workspace-pinned runtime:
+   then start the pinned runtime:
 
    ```sh
-   cd ~/.dsh/dsh-browser && pnpm start
+   npx @deepseek-ai/dsh@0.1.2-rc.1 web
    ```
 
-   From a clone, run `pnpm start` in the repository root instead.
-
-   Or, once published, the exact supported public runtime:
-
-   ```sh
-   npx @deepseek-ai/dsh@0.1.2 web
-   ```
-
-   Both commands load the same bundle from the local `web` profile. Port 3080 is used by default; append `--port <port>` when it is occupied.
+   Managed-install and checkout users instead run `pnpm start` from `~/.dsh/dsh-browser` or the repository root. Both commands load the same bundle from the local `web` profile. Port 3080 is used by default; append `--port <port>` when it is occupied.
 
    **DSH Desktop users**: the Desktop app assigns a random local Web port by default (`dsh-desktop.port: 0`), so port-based auto-discovery cannot predict it. Pin the port to `43189` in Desktop settings (see the [deepseek-harness-desktop user guide](https://github.com/anywhere-labs/deepseek-harness-desktop/blob/master/docs/user-guide.en.md)); auto-discovery covers that port. Alternatively, enter `http://127.0.0.1:<port>` manually in the side-panel settings.
 

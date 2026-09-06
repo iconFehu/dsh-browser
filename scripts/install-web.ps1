@@ -393,17 +393,22 @@ Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' -Arguments @('--filter', $B
   -FailZh "桥插件构建失败。" -FailEn "The bridge plugin build failed."
 
 Write-Step 2 "注册到本机 web profile" "Register with the local web profile"
-if (Test-ProfileDependency -Manifest $WebProfileManifest -PackageName $LegacyPlugin) {
+if (Test-ProfileDependency -Manifest $WebProfileManifest -PackageName $BridgePlugin) {
+  Write-Pair "web profile 已注册 $BridgePlugin，跳过注册。" "The web profile already lists $BridgePlugin; skipping registration."
+  Write-Pair "如需切换来源，先运行：dsh plugin --profile web remove $BridgePlugin" "To switch sources, first run: dsh plugin --profile web remove $BridgePlugin"
+} else {
+  if (Test-ProfileDependency -Manifest $WebProfileManifest -PackageName $LegacyPlugin) {
+    Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' `
+      -Arguments @('exec', 'dsh', 'plugin', '--profile', 'web', 'remove', $LegacyPlugin) `
+      -FailZh "移除旧插件失败。" -FailEn "Removing the legacy plugin failed."
+  }
+  # pnpm accepts forward slashes on Windows, and they keep the backslashes in a Windows path
+  # from being read as escapes inside the link: specifier.
+  $LinkTarget = $Plugin.Replace('\', '/')
   Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' `
-    -Arguments @('exec', 'dsh', 'plugin', '--profile', 'web', 'remove', $LegacyPlugin) `
-    -FailZh "移除旧插件失败。" -FailEn "Removing the legacy plugin failed."
+    -Arguments @('exec', 'dsh', 'plugin', '--profile', 'web', 'add', '-w', "$BridgePlugin@link:$LinkTarget") `
+    -FailZh "注册桥插件失败。" -FailEn "Registering the bridge plugin failed."
 }
-# pnpm accepts forward slashes on Windows, and they keep the backslashes in a Windows path
-# from being read as escapes inside the link: specifier.
-$LinkTarget = $Plugin.Replace('\', '/')
-Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' `
-  -Arguments @('exec', 'dsh', 'plugin', '--profile', 'web', 'add', '-w', "$BridgePlugin@link:$LinkTarget") `
-  -FailZh "注册桥插件失败。" -FailEn "Registering the bridge plugin failed."
 
 Write-Step 3 "构建 Chrome 扩展" "Build the Chrome extension"
 Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' -Arguments @('--filter', 'dsh-browser-extension', 'run', 'build') `
@@ -476,5 +481,7 @@ $QuotedRoot = "'" + $Root.Replace("'", "''") + "'"
 Write-Host ("• 启动固定版本：cd {0}; pnpm start" -f $QuotedRoot)
 Write-Host ("   Start the pinned version: cd {0}; pnpm start" -f $QuotedRoot)
 Write-Pair "• 0.1.2 发布后也可启动精确版本：npx @deepseek-ai/dsh@0.1.2 web" "Or, once published, start the exact supported version: npx @deepseek-ai/dsh@0.1.2 web"
+Write-Host ''
+Write-Pair "两个独立组件：桥插件已注册到 web profile（命令行组件）；扩展请按上述步骤在 Chrome 中加载（浏览器组件）。" "Two independent components: the bridge plugin is registered into the web profile (CLI); the extension loads in Chrome as shown above (browser)."
 Write-Host ''
 Write-Pair "如果用得顺手，欢迎在 GitHub 点个 Star 支持我们：https://github.com/iconFehu/dsh-browser" "If dsh-browser is useful to you, we'd appreciate a Star on GitHub: https://github.com/iconFehu/dsh-browser"

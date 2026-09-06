@@ -302,6 +302,7 @@ EXT="$ROOT/extensions/dsh-browser"
 PLUGIN="$ROOT/packages/browser/bridge-browser"
 WEB_PROFILE_MANIFEST="$DSH_HOME_DIR/profiles/web/package.json"
 LEGACY_PLUGIN="@deepseek-ai/dsh-bridge-browser"
+BRIDGE_PLUGIN="@yuxianglin/dsh-bridge-browser"
 
 profile_has_dependency() {
   local manifest="$1"
@@ -323,10 +324,14 @@ print_step 1 "构建浏览器桥" "Build the browser bridge"
 (cd "$ROOT" && pnpm --filter @yuxianglin/dsh-bridge-browser run build >/dev/null 2>&1)
 
 print_step 2 "注册到本机 web profile" "Register with the local web profile"
-if profile_has_dependency "$WEB_PROFILE_MANIFEST" "$LEGACY_PLUGIN"; then
-  (cd "$ROOT" && pnpm exec dsh plugin --profile web remove "$LEGACY_PLUGIN" >/dev/null)
+if profile_has_dependency "$WEB_PROFILE_MANIFEST" "$BRIDGE_PLUGIN"; then
+  print_pair "web profile 已注册 $BRIDGE_PLUGIN，跳过注册。" "The web profile already lists $BRIDGE_PLUGIN; skipping registration."
+else
+  if profile_has_dependency "$WEB_PROFILE_MANIFEST" "$LEGACY_PLUGIN"; then
+    (cd "$ROOT" && pnpm exec dsh plugin --profile web remove "$LEGACY_PLUGIN" >/dev/null)
+  fi
+  (cd "$ROOT" && pnpm exec dsh plugin --profile web add -w "@yuxianglin/dsh-bridge-browser@link:$PLUGIN" >/dev/null)
 fi
-(cd "$ROOT" && pnpm exec dsh plugin --profile web add -w "@yuxianglin/dsh-bridge-browser@link:$PLUGIN" >/dev/null)
 
 print_step 3 "构建 Chrome 扩展" "Build the Chrome extension"
 (cd "$ROOT" && pnpm --filter dsh-browser-extension run build >/dev/null 2>&1)

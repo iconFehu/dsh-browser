@@ -12,7 +12,8 @@
     "test": "pnpm --filter @yuxianglin/dsh-bridge-browser run test && pnpm --filter dsh-browser-extension run test",
     "typecheck": "pnpm --filter @yuxianglin/dsh-bridge-browser run typecheck && pnpm --filter dsh-browser-extension run typecheck",
     "check:runtime": "node scripts/check-runtime.mjs",
-    "test:smoke": "node scripts/smoke-runtime.mjs"
+    "test:smoke": "node scripts/smoke-runtime.mjs",
+    "test:publish": "node scripts/smoke-publish.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis-plugin-group": "1.0.2",

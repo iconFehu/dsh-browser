@@ -15,29 +15,61 @@
 
 ## 快速安装
 
-### Windows + DSH Desktop（推荐）
+两个独立组件，各自安装：
 
-从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载 **dsh-browser-windows.zip**，完整解压后运行：
+| 组件 | 是什么 | 怎么安装 |
+|---|---|---|
+| **桥插件** — `@yuxianglin/dsh-bridge-browser` | dsh 插件：挂载 token 认证的 `/ext/bridge` 与纯文本 `browser_*` 工具 | 命令行：`dsh plugin --profile web add` |
+| **Chrome/Firefox 扩展** | MV3 侧边栏：经 bridge 驱动你受控的标签页 | 浏览器：在 `chrome://extensions` 加载已解压的目录 |
+
+| 环境 | 桥插件 | 扩展 |
+|---|---|---|
+| 标准 `dsh web` | 方式 A（命令行）或方式 C | 方式 B 或 C |
+| DSH Desktop（内置 bridge） | 无需——Desktop 自带 | 方式 B 或 C |
+
+### 方式 A：纯命令行（标准 dsh web）
+
+需要 Node.js 与固定版本的 dsh CLI，以及已发布的 bridge 包：
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web add -w @yuxianglin/dsh-bridge-browser@0.0.5
+npx @deepseek-ai/dsh@0.1.2-rc.1 web
+```
+
+卸载：
+
+```sh
+npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-bridge-browser
+```
+
+> [!NOTE]
+> 方式 A 需要 `@yuxianglin/dsh-bridge-browser@0.0.5` 已发布到 npm registry。首次发布之前，请改用方式 C，或用同样命令注册发布包内附带的 `*.tgz`（`dsh plugin --profile web add -w file:…`）。
+
+### 方式 B：安装扩展 ZIP
+
+1. 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载 `dsh-browser-chrome-v0.1.4.zip`——每个发布标签对应匹配的归档。
+2. 解压到固定目录。
+3. 打开 `chrome://extensions`，开启**开发者模式**，点击**加载已解压的扩展程序**，选择该目录。
+
+更新时把新版 ZIP 解压覆盖到同一目录，再点击扩展卡片上的**重新加载**。扩展本身也会检查已发布的 Release。
+
+### 方式 C：一键安装器（组合两者）
+
+**Windows + DSH Desktop（推荐）：** 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载 **dsh-browser-windows.zip**，完整解压后运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-安装器默认使用预构建扩展，不需要 Git、Node 或 pnpm，不会重复注册 Desktop 的 bridge。首次在 Chrome 的 `chrome://extensions` 开启开发者模式，点击“加载已解压的扩展程序”，选择安装器打印的目录。
+安装器默认使用预构建扩展，不需要 Git、Node 或 pnpm，不会重复注册 Desktop 的 bridge。首次在 Chrome 的 `chrome://extensions` 开启开发者模式，点击“加载已解压的扩展程序”，选择安装器打印的目录。启动 DSH Desktop，在设置中选择**兼容模式**并开启**浏览器访问**。扩展桥地址留空，打开侧边栏自动连接。Chrome 首次加载和 Desktop 访问设置需要用户操作。
 
-启动 DSH Desktop，在设置中选择**兼容模式**并开启**浏览器访问**。扩展桥地址留空，打开侧边栏自动连接。Chrome 首次加载和 Desktop 访问设置需要用户操作。
-
-### macOS / Linux 与标准 dsh web
-
-保留源码安装，要求 Node.js `^22.19` 或 `>=24`、pnpm，Chrome 116+ 或 Firefox 140+：
+**macOS / Linux 与标准 dsh web**（源码安装）：要求 Node.js `^22.19` 或 `>=24`、pnpm，Chrome 116+ 或 Firefox 140+：
 
 ```sh
 curl -fsSL https://github.com/iconFehu/dsh-browser/releases/latest/download/install.sh | bash
 ```
 
-Windows 标准 web 在完整安装包中运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web`。它需要开发依赖并构建、注册 web profile 的 bridge。
-
-本项目没有发布名为 `dsh-browser` 的 npm 包。首次发布之前，请使用随代码交付的本地预构建 ZIP。
+Windows 标准 web 在完整安装包中运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Runtime Web`。它需要开发依赖并构建、注册 web profile 的 bridge；bridge 已注册时自动跳过。
 
 ## 性能基准
 
@@ -152,6 +184,7 @@ pnpm run typecheck
 pnpm run test
 pnpm run check:runtime
 pnpm run test:smoke
+pnpm run test:publish
 
 pnpm --filter @yuxianglin/dsh-bridge-browser run build
 pnpm --filter @yuxianglin/dsh-bridge-browser run typecheck
@@ -167,7 +200,7 @@ pnpm --filter dsh-browser-extension run test
 - 启动前桥接插件必须已有 `lib/` 供 Loader 加载；`scripts/install.sh` 和根目录 `pnpm run build` 都会先构建插件再构建扩展。
 - `@deepseek-ai/dsh` 与桥接插件的依赖固定在同一条经过验证的公开发布线上；升级时必须同时更新 manifest、锁文件并重跑根目录检查。
 
-`check:runtime` 检查实际解析的 DSH 依赖和锁文件；`test:smoke` 使用临时 DSH home 启动真实 web 宿主，验证桥接和重启后的会话读取，无需模型密钥。CI 在干净安装后运行这些检查。
+`check:runtime` 检查实际解析的 DSH 依赖和锁文件；`test:smoke` 使用临时 DSH home 启动真实 web 宿主，验证桥接和重启后的会话读取，无需模型密钥。`test:publish` 打包 bridge，用真实 `dsh plugin` 命令把该 tarball 注册进全新的 `web` profile 并启动宿主——与 `pnpm publish` 交付的是同一份字节。CI 在干净安装后运行这些检查；`publish-bridge.yml` 可在 `bridge-v*` 标签或手动触发时发布到 npm。
 
 如果遇到 `cache.hydratePrepared is not a function`，更新仓库后重新运行 `pnpm install --frozen-lockfile` 和 `pnpm run build`，再重启 `pnpm start`。无需删除会话数据或清空全局缓存。
 
