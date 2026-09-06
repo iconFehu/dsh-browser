@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
   [ValidateSet('Desktop', 'Web')][string]$Runtime = 'Desktop',
-  [string]$Version = '0.1.4',
+  [string]$Version = '0.1.5',
   [string]$BundleDirectory,
   [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
   [switch]$NoOpen
@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath $scriptPath)) {
 if ($Runtime -eq 'Desktop') {
   & $scriptPath -Version $Version -BundleDirectory $BundleDirectory -DshHome $DshHome -NoOpen:$NoOpen
 } else {
-  if ($Version -ne '0.1.4') { throw 'Use the matching release installer for standard web.' }
+  if ($Version -ne '0.1.5') { throw 'Use the matching release installer for standard web.' }
   $env:DSH_HOME = $DshHome
   & $scriptPath
 }

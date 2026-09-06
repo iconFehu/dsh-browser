@@ -24,7 +24,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
 
 $Repository = 'iconFehu/dsh-browser'
-$RemoteRef = 'v0.1.4'
+$RemoteRef = 'v0.1.5'
 $DshHomeDir = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $HOME '.dsh' }
 $ManagedRoot = Join-Path $DshHomeDir 'dsh-browser'
 # Same marker filename as scripts/install.sh: one managed root, one definition of "managed".
