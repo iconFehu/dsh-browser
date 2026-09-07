@@ -1716,9 +1716,15 @@ export function App(): React.JSX.Element {
                 className="setting-toggle-input"
                 type="checkbox"
                 checked={settings?.cdpEnabled ?? false}
-                onChange={(event) => setSettings((current) => current === null
-                  ? current
-                  : { ...current, cdpEnabled: event.target.checked })}
+                onChange={(event) => {
+                  const checked = event.target.checked
+                  setSettings((current) => {
+                    if (current === null) return current
+                    const next = { ...current, cdpEnabled: checked }
+                    void api.updateSettings(next)
+                    return next
+                  })
+                }}
               />
               <span className="setting-toggle-control" aria-hidden="true"><span /></span>
             </label>

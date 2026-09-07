@@ -70,6 +70,19 @@ export const BROWSER_TOOL_NAMES = [
   'browser_dom',
   'browser_screenshot',
   'browser_export_pdf',
+  'browser_download_media',
+  'browser_list_downloads',
+  'browser_bookmarks_search',
+  'browser_bookmarks_add',
+  'browser_bookmarks_remove',
+  'browser_bookmarks_update',
+  'browser_bookmarks_list',
+  'browser_bookmarks_move',
+  'browser_history',
+  'browser_tab_groups_list',
+  'browser_tab_groups_create',
+  'browser_tab_groups_remove',
+  'browser_page_context',
 ] as const
 
 /**
@@ -336,6 +349,172 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
     execute: (_args, exec) => call(exec, 'browser_export_pdf', {}),
   })
 
+  const downloadMedia = (): ToolDefinition => defineTool({
+    name: 'browser_download_media',
+    description: 'Download media from the controlled page. Requires a selector or url. When no url is given, the first <img>, <video>, or <audio> matching selector is used. Opens the browser download dialog.',
+    parameters: {
+      selector: { type: 'string', description: 'CSS selector for the media element. Omit to download from URL directly.' },
+      url: { type: 'string', description: 'Direct URL to download. Takes precedence over selector.' },
+      filename: { type: 'string', description: 'Optional filename for the downloaded file.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_download_media', args),
+  })
+
+  const listDownloads = (): ToolDefinition => defineTool({
+    name: 'browser_list_downloads',
+    description: 'List recent browser downloads with status, path, and size.',
+    parameters: {
+      limit: { type: 'number', description: 'Maximum number of downloads to list. Defaults to 10.' },
+      filter: {
+        type: 'object',
+        description: 'Optional filters: filename (string), path (string), state (string: completed|in_progress|paused|interrupted), startTime (number, ms since epoch), endTime (number, ms since epoch).',
+        properties: {
+          filename: { type: 'string' },
+          path: { type: 'string' },
+          state: { type: 'string', enum: ['completed', 'in_progress', 'paused', 'interrupted'] },
+          startTime: { type: 'number' },
+          endTime: { type: 'number' },
+        },
+        additionalProperties: false,
+      },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_list_downloads', args),
+  })
+
+  const bookmarksSearch = (): ToolDefinition => defineTool({
+    name: 'browser_bookmarks_search',
+    description: 'Search bookmarks by query string.',
+    parameters: {
+      query: { type: 'string', description: 'Search query. Required.', required: true },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_bookmarks_search', args),
+  })
+
+  const bookmarksAdd = (): ToolDefinition => defineTool({
+    name: 'browser_bookmarks_add',
+    description: 'Add a new bookmark.',
+    parameters: {
+      url: { type: 'string', description: 'Bookmark URL. Required.', required: true },
+      title: { type: 'string', description: 'Bookmark title. If not provided, uses the page title.' },
+      parentId: { type: 'string', description: 'Parent folder ID. If not provided, adds to "All Bookmarks".' },
+      index: { type: 'number', description: 'Index within the parent folder. Defaults to end.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_bookmarks_add', args),
+  })
+
+  const bookmarksRemove = (): ToolDefinition => defineTool({
+    name: 'browser_bookmarks_remove',
+    description: 'Remove a bookmark by ID.',
+    parameters: {
+      id: { type: 'string', description: 'Bookmark ID. Required.', required: true },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_bookmarks_remove', args),
+  })
+
+  const bookmarksUpdate = (): ToolDefinition => defineTool({
+    name: 'browser_bookmarks_update',
+    description: 'Update an existing bookmark.',
+    parameters: {
+      id: { type: 'string', description: 'Bookmark ID. Required.', required: true },
+      title: { type: 'string', description: 'New title. Optional.' },
+      url: { type: 'string', description: 'New URL. Optional.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_bookmarks_update', args),
+  })
+
+  const bookmarksList = (): ToolDefinition => defineTool({
+    name: 'browser_bookmarks_list',
+    description: 'List bookmarks. Optionally filter by folder ID.',
+    parameters: {
+      id: { type: 'string', description: 'Folder ID to list. If not provided, lists top-level bookmarks.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_bookmarks_list', args),
+  })
+
+  const bookmarksMove = (): ToolDefinition => defineTool({
+    name: 'browser_bookmarks_move',
+    description: 'Move a bookmark to a different folder.',
+    parameters: {
+      id: { type: 'string', description: 'Bookmark ID. Required.', required: true },
+      parentId: { type: 'string', description: 'Destination folder ID. Required.', required: true },
+      index: { type: 'number', description: 'Index within the destination folder. Defaults to end.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_bookmarks_move', args),
+  })
+
+  const history = (): ToolDefinition => defineTool({
+    name: 'browser_history',
+    description: 'Read or search browser history.',
+    parameters: {
+      mode: { type: 'string', description: 'Operation: "read" (default) or "search".', enum: ['read', 'search'] },
+      query: { type: 'string', description: 'Search query. Required for search mode.' },
+      startTime: { type: 'number', description: 'Start time (ms since epoch). Defaults to 30 days ago.' },
+      endTime: { type: 'number', description: 'End time (ms since epoch). Defaults to now.' },
+      maxResults: { type: 'number', description: 'Maximum results. Defaults to 20.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_history', args),
+  })
+
+  const tabGroupsList = (): ToolDefinition => defineTool({
+    name: 'browser_tab_groups_list',
+    description: 'List all tab groups.',
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_tab_groups_list', {}),
+  })
+
+  const tabGroupsCreate = (): ToolDefinition => defineTool({
+    name: 'browser_tab_groups_create',
+    description: 'Create a new tab group.',
+    parameters: {
+      title: { type: 'string', description: 'Group title. Required.', required: true },
+      color: { type: 'string', description: 'Group color. Defaults to blue.' },
+      windowId: { type: 'number', description: 'Window ID. Defaults to current window.' },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_tab_groups_create', args),
+  })
+
+  const tabGroupsRemove = (): ToolDefinition => defineTool({
+    name: 'browser_tab_groups_remove',
+    description: 'Remove a tab group (tabs are not closed).',
+    parameters: {
+      groupId: { type: 'number', description: 'Group ID. Required.', required: true },
+    },
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (args, exec) => call(exec, 'browser_tab_groups_remove', args),
+  })
+
+  const pageContext = (): ToolDefinition => defineTool({
+    name: 'browser_page_context',
+    description: 'Get a semantic HTML representation of the page that provides context for AI models. Uses Chrome\'s Page.captureSnapshot CDP method.',
+    parameters: {},
+    timeoutMs: options.toolTimeoutMs,
+    output: TEXT_OUTPUT,
+    execute: (_args, exec) => call(exec, 'browser_page_context', {}),
+  })
+
   return [
     snapshot(),
     click(),
@@ -355,5 +534,18 @@ function defineTools(call: Call, options: BrowserToolsOptions): ToolDefinition[]
     dom(),
     screenshot(),
     exportPdf(),
+    downloadMedia(),
+    listDownloads(),
+    bookmarksSearch(),
+    bookmarksAdd(),
+    bookmarksRemove(),
+    bookmarksUpdate(),
+    bookmarksList(),
+    bookmarksMove(),
+    history(),
+    tabGroupsList(),
+    tabGroupsCreate(),
+    tabGroupsRemove(),
+    pageContext(),
   ]
 }

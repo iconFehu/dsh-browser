@@ -15,7 +15,10 @@
     "alarms",
     "notifications",
     "debugger",
-    "downloads"
+    "downloads",
+    "bookmarks",
+    "history",
+    "tabGroups"
   ],
   "host_permissions": [
     "http://*/*",

@@ -161,8 +161,8 @@ describe('registerBrowserTools', () => {
     const { ctx, bridge, registered } = makeHarness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 5_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
     const descriptionChars = registered.reduce((sum, { definition }) => sum + String(definition.description).length, 0)
-    // 18 tools incl. six full-CDP observation tools; keep the whole surface under 3.5k chars.
-    expect(descriptionChars).toBeLessThan(3_500)
+    // 31 tools incl. six full-CDP observation tools; keep the whole surface under 4.5k chars.
+    expect(descriptionChars).toBeLessThan(4_500)
   })
 
   it('exposes optional frame routing on frame-local tools only', () => {
