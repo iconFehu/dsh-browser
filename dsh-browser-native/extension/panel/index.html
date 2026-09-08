@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DSH Browser Native</title><link rel="stylesheet" href="panel.css"></head>
+  <body>
+    <main class="shell">
+      <header><div><h1>DSH Browser</h1><span id="backend">Native backend</span></div><span id="status" class="status">Disconnected</span></header>
+      <section class="card"><h2>Browser context</h2><button id="snapshot">Read current page</button><pre id="output">No browser context loaded.</pre></section>
+      <section class="card"><h2>WebMCP tools</h2><select id="tool"><option value="">Load tools first</option></select><textarea id="prompt" rows="3" placeholder="JSON input for the selected tool…"></textarea><button id="run">Load tools</button></section>
+    </main>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

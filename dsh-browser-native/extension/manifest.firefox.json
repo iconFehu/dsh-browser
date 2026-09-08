@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "DSH Browser Native",
+  "version": "0.1.0",
+  "description": "ChatGPT-compatible browser capabilities for DSH and Codex backends.",
+  "permissions": ["bookmarks", "debugger", "downloads", "history", "nativeMessaging", "scripting", "storage", "tabs", "webNavigation"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "scripts": ["background.js"], "type": "module" },
+  "sidebar_action": { "default_panel": "panel/index.html", "default_title": "DSH Browser Native" },
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle", "all_frames": true }],
+  "browser_specific_settings": { "gecko": { "id": "dsh-browser-native@dsh-browser-native" } }
+}

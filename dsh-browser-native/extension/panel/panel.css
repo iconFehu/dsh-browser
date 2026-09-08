@@ -1,0 +1,11 @@
+:root { color-scheme: dark; font: 13px system-ui, sans-serif; background: #171717; color: #f5f5f5; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 280px; }
+.shell { padding: 14px; display: grid; gap: 12px; }
+header { display: flex; justify-content: space-between; align-items: start; border-bottom: 1px solid #333; padding-bottom: 12px; }
+h1 { font-size: 16px; margin: 0 0 3px; } h2 { font-size: 13px; margin: 0 0 9px; }
+#backend { color: #999; font-size: 11px; } .status { color: #f0ad4e; font-size: 11px; }
+.card { background: #222; border: 1px solid #383838; border-radius: 10px; padding: 12px; }
+button { background: #f5f5f5; border: 0; border-radius: 7px; color: #171717; cursor: pointer; font-weight: 600; padding: 8px 11px; }
+button:disabled { cursor: wait; opacity: .5; } textarea, pre { width: 100%; background: #151515; border: 1px solid #444; border-radius: 7px; color: inherit; padding: 8px; }
+textarea { resize: vertical; margin-bottom: 8px; } pre { max-height: 240px; overflow: auto; white-space: pre-wrap; font-size: 11px; }

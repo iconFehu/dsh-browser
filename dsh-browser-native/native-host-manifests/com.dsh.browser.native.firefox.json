@@ -1,0 +1,9 @@
+{
+  "name": "com.dsh.browser.native",
+  "description": "dsh-browser-native Native Messaging host",
+  "path": "REPLACE_WITH_INSTALLED_HOST_PATH",
+  "type": "stdio",
+  "allowed_extensions": [
+    "REPLACE_WITH_EXTENSION_ID@dsh-browser-native"
+  ]
+}

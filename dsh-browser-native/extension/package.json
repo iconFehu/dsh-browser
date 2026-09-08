@@ -1,0 +1,8 @@
+{
+  "name": "dsh-browser-native-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit", "build": "node scripts/build.mjs", "build:firefox": "node scripts/build.mjs --firefox", "package": "node scripts/package.mjs", "package:firefox": "node scripts/package.mjs --firefox" },
+  "devDependencies": { "@types/chrome": "^0.0.268", "esbuild": "^0.25.0", "typescript": "^5.6.2" }
+}

@@ -2,6 +2,8 @@
 packages:
   - extensions/*
   - packages/*/*
+  - dsh-browser-native
+  - dsh-browser-native/extension
 
 # Keep DSH peer providers explicit and on the tested 0.1.2-rc.1 release line.
 autoInstallPeers: false
