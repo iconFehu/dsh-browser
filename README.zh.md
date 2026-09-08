@@ -47,7 +47,7 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxianglin/dsh-brid
 
 ### 方式 B：安装扩展 ZIP
 
-1. 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载 `dsh-browser-chrome-0.1.5.zip`——每个发布标签对应匹配的归档。
+1. 从 [Releases](https://github.com/iconFehu/dsh-browser/releases) 下载 `dsh-browser-chrome-0.1.6.zip`——每个发布标签对应匹配的归档。
 2. 解压到固定目录。
 3. 打开 `chrome://extensions`，开启**开发者模式**，点击**加载已解压的扩展程序**，选择该目录。
 

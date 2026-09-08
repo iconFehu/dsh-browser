@@ -6,7 +6,7 @@ This document compares the official ChatGPT browser extension with the dsh-brows
 
 | Aspect | ChatGPT Extension | DSH Browser Extension |
 |--------|------------------|----------------------|
-| **Version** | 1.26.901.11451 (stable) | 0.1.5 |
+| **Version** | 1.26.901.11451 (stable) | 0.1.6 |
 | **Extension ID** | hehggadaopoacecdllhhajmbjkdcmajg | dsh-browser |
 | **Min Chrome Version** | 131 | 116 |
 | **Architecture** | Manifest V3 | Manifest V3 |

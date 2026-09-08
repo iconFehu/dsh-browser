@@ -37,7 +37,7 @@ Remove with `npx @deepseek-ai/dsh@0.1.2-rc.1 plugin --profile web remove @yuxian
 **Git install (before publishing / for forks).** The package's `prepare` script builds `lib/` during install, so a git source behaves like a registry source. `dsh plugin` forwards its arguments to pnpm, which resolves the package inside this monorepo through the `#path:` parameter:
 
 ```sh
-dsh plugin --profile web add -w "github:iconFehu/dsh-browser#v0.1.5&path:/packages/browser/bridge-browser"
+dsh plugin --profile web add -w "github:iconFehu/dsh-browser#v0.1.6&path:/packages/browser/bridge-browser"
 ```
 
 pnpm blocks build scripts of git dependencies by default: the first run fails and prints the exact `allowBuilds` key. Add that key — quoted, because it contains `:` from the URL — to the profile's `pnpm-workspace.yaml` and re-run. The key embeds the resolved commit, so approving a newer commit requires a fresh entry.
