@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const BRIDGE_CONFIG_PATH = '/ext/bridge-config'
     const LOCALE_NS = 'bridge-browser'
     const STYLE_ID = '@yuxianglin/dsh-bridge-browser/BridgeAddressRow'
-    const inject = ['slots', 'locale']
+    const inject = ['slots', 'locale', 'inputTriggers']
 
     const dictionaries = {
       zh: {
@@ -171,6 +171,39 @@ window.__ModuleLoader__.load({
         order: 100,
         locale: LOCALE_NS,
       }, BridgeAddressRow))
+
+      const source = {
+        trigger: '@',
+        name: 'browser-tab',
+        order: -20,
+        candidates: async (_session, request) => {
+          const response = await fetch('/ext/browser-tabs', { cache: 'no-store', signal: request.signal })
+          if (!response.ok) return []
+          const tabs = await response.json()
+          if (!Array.isArray(tabs)) return []
+          const query = request.query.toLocaleLowerCase()
+          return tabs.filter(tab => tab && typeof tab.ref === 'string'
+            && `${tab.title ?? ''} ${tab.url ?? ''}`.toLocaleLowerCase().includes(query))
+            .map(tab => ({
+              name: tab.title || tab.url,
+              description: tab.url,
+              icon: 'session',
+              value: tab.ref,
+            }))
+        },
+        onPick({ candidate }) {
+          if (typeof candidate.value !== 'string') return undefined
+          return { insert: {
+            source: 'browser-tab', ref: candidate.value,
+            label: candidate.name, appearance: 'session', clipboardText: `@${candidate.name}`,
+          } }
+        },
+        codec: {
+          clipboardText: ref => ref,
+          serialize: ref => Promise.resolve(`[[dsh-browser-tab:${ref}]]`),
+        },
+      }
+      ctx.effect(() => ctx.inputTriggers.registerSource(source), 'bridge-browser: @tab source')
     }
 
     module.exports.apply = apply

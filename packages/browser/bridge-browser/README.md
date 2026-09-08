@@ -6,6 +6,8 @@ English | [中文](README.zh.md)
 
 The **browser-operation bridge** for dsh: mounts a token-authenticated WebSocket carrier (`/ext/bridge`) that the Chrome extension connects to, projects its calls onto dsh 0.1.2 Typert Remotes, follows Session and Remote Event streams per connection, and registers the text-only `browser_*` tool set that reads and operates the user's active tab through the extension — click elements, fill forms, scroll, and navigate in the real browser, login state preserved. The side panel is the conversation entry; the tools are the product.
 
+The package also contributes a DSH Web Client `@` input source. In DSH Desktop or the normal Web UI, typing `@` queries `/ext/browser-tabs`, shows the connected Chrome tabs, and serializes the selected opaque tab reference into the next prompt. The bridge binds that reference before forwarding `session.prompt`; ordinary prompts and clients that do not select a tab retain the existing tab-affinity behavior.
+
 **Text-only browser tools, multimodal chat passthrough**: page snapshots stay structured text (title, main content, numbered interactive inventory, and masked form fields), and every browser action uses stable inventory numbers. The generic RPC carrier also passes dsh 0.1.2 image prompts and durable attachment reads; deferred new sessions expose image limits only when the host actually mounts the attachment service.
 
 ## Config

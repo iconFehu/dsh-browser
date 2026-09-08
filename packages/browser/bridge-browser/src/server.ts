@@ -462,10 +462,14 @@ export class BridgeServer {
       return
     }
     try {
+      const prepared = frame.method === 'session.prompt' ? extractBrowserTabMarker(frame.payload) : { payload: frame.payload }
+      if (prepared.tabRef !== undefined) {
+        await this.requestTool('browser_tab_bind', { ref: prepared.tabRef }, conn.abort.signal, this.deps.toolTimeoutMs, sessionIdFromPayload(frame.payload))
+      }
       const result = await this.deps.api.call({
         rpcId: frame.id,
         method: frame.method,
-        payload: frame.payload,
+        payload: prepared.payload,
         signal: conn.abort.signal,
       })
       sendFrame(conn.ws, {
@@ -517,6 +521,30 @@ export class BridgeServer {
       pending.reject(new BridgeToolError('bridge-closed', 'the extension connection was replaced'))
     }
   }
+}
+
+function sessionIdFromPayload(payload: unknown): string | undefined {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return undefined
+  const value = (payload as Record<string, unknown>).sessionId
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+export function extractBrowserTabMarker(payload: unknown): { payload: unknown; tabRef?: string } {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return { payload }
+  const root = payload as Record<string, unknown>
+  const content = root.content
+  if (!Array.isArray(content)) return { payload }
+  let tabRef: string | undefined
+  const nextContent = content.map((part) => {
+    if (typeof part !== 'object' || part === null || Array.isArray(part)) return part
+    const record = part as Record<string, unknown>
+    if (typeof record.text !== 'string') return part
+    const match = /\[\[dsh-browser-tab:([^\]]+)\]\]\s*/.exec(record.text)
+    if (match === null) return part
+    tabRef = match[1]
+    return { ...record, text: record.text.replace(match[0], '') }
+  })
+  return tabRef === undefined ? { payload } : { payload: { ...root, content: nextContent }, tabRef }
 }
 
 function browserSnapshotPayload(payload: unknown): { sessionId: string; snapshot: string } | undefined {

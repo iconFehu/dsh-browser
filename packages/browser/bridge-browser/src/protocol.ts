@@ -23,6 +23,18 @@ export const BRIDGE_INJECT_BROWSER_SNAPSHOT_METHOD = 'bridge.injectBrowserSnapsh
 
 /** Internal RPC used by the panel to permanently delete one session's durable storage. */
 export const BRIDGE_SESSION_PURGE_METHOD = 'bridge.session.purge'
+/** Extension RPC used by Web Clients to populate an @tab picker. */
+export const BRIDGE_BROWSER_TABS_LIST_METHOD = 'browser.tabs.list'
+
+/** Public tab metadata; Chrome's numeric tab id never crosses the bridge. */
+export interface BrowserTabRef {
+  ref: string
+  windowId: number
+  title: string
+  url: string
+  favIconUrl?: string
+  updatedAt: number
+}
 
 /** Seconds a fresh socket may take to present `hello` before it is closed. */
 export const HELLO_TIMEOUT_MS = 5_000

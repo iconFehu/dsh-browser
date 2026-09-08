@@ -69,6 +69,7 @@ import {
   type AffinityTab,
   type TabAffinityDecision,
 } from './tab-affinity.ts'
+import { tabRefFromChrome, type BrowserTabRef } from './tab-registry.ts'
 import { FocusedWindowTracker } from './focused-window.ts'
 import { SelectionTracker, type SelectionSource } from './selection.ts'
 import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
@@ -961,6 +962,26 @@ async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> 
 /** Route one tool.call frame to the user-approved controlled tab. */
 function routeToolCall(call: ToolCall): void {
   if (bridge === null) return
+  if (call.name === 'browser_tabs_list' || call.name === 'browser_tab_bind') {
+    void chrome.tabs.query({}).then((chromeTabs) => chromeTabs.map(tabRefFromChrome)
+      .filter((tab): tab is BrowserTabRef => tab !== null)
+      .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url)))
+      .then((tabs) => {
+        if (call.name === 'browser_tab_bind') {
+          const ref = typeof call.args.ref === 'string' ? call.args.ref : ''
+          const selectedChromeTab = chromeTabs.find(tab => tabRefFromChrome(tab)?.ref === ref)
+          const selected = selectedChromeTab === undefined ? null : summarizeTab(selectedChromeTab)
+          if (selected === null) throw new Error('The selected browser tab is no longer available')
+          tabAffinity.rebindActive(selected, call.sessionId)
+          broadcastTabAffinity()
+          return bridge?.send({ t: 'tool.result', id: call.id, ok: true, result: { text: 'Browser tab bound.' } })
+        }
+        return bridge?.send({ t: 'tool.result', id: call.id, ok: true, result: { text: JSON.stringify(tabs) } })
+      })
+      .catch((error: unknown) => bridge?.send({ t: 'tool.result', id: call.id, ok: false,
+        error: { code: 'action-failed', message: error instanceof Error ? error.message : String(error) } }))
+    return
+  }
   activeToolCalls.get(call.id)?.abort()
   const controller = new AbortController()
   activeToolCalls.set(call.id, controller)
@@ -1211,6 +1232,16 @@ chrome.runtime.onConnect.addListener((port) => {
     if (typeof message !== 'object' || message === null) return
     const msg = message as { type?: string }
     switch (msg.type) {
+      case 'browser-tabs.request': {
+        const request = message as { id?: unknown }
+        if (typeof request.id !== 'string') break
+        void chrome.tabs.query({}).then((tabs) => {
+          const refs = tabs.map(tabRefFromChrome).filter((tab): tab is BrowserTabRef => tab !== null)
+            .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url))
+          try { port.postMessage({ type: 'rpc.result', id: request.id, ok: true, result: { result: { ok: true, value: refs } } }) } catch { /* port closed */ }
+        })
+        break
+      }
       case 'rpc': {
         const rpcMsg = message as { id: string; method: string; payload?: unknown }
         const rpcSessionId = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
@@ -1221,6 +1252,16 @@ chrome.runtime.onConnect.addListener((port) => {
           : sessionSnapshotRefreshes.get(rpcSessionId) ?? Promise.resolve()
         const prepare = rpcMsg.method === 'session.prompt'
           ? Promise.resolve().then(async () => {
+              const requestedRef = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
+                ? (rpcMsg.payload as { tabRef?: unknown }).tabRef : undefined
+              if (typeof requestedRef === 'string' && rpcSessionId !== undefined) {
+                const tabs = await chrome.tabs.query({})
+                const requested = tabs.find((tab) => tabRefFromChrome(tab)?.ref === requestedRef)
+                const summary = requested === undefined ? null : summarizeTab(requested)
+                if (summary === null || requested?.id === undefined) throw new Error('The selected browser tab is no longer available')
+                tabAffinity.rebindActive(summary, rpcSessionId)
+                broadcastTabAffinity()
+              }
               await refresh
               return rpcSessionId === undefined || tabAffinity.getSessionTab(rpcSessionId) !== undefined
             })

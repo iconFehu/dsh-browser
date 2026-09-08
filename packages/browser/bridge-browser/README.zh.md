@@ -1,5 +1,7 @@
 # @yuxianglin/dsh-bridge-browser
 
+该插件同时向 DSH Web Client 提供 `@` 标签页输入源。在 DSH Desktop 或普通 Web UI 中输入 `@` 会查询 `/ext/browser-tabs`，显示已连接 Chrome 的标签页，并把选中的 opaque 标签页引用序列化到下一条 prompt。bridge 会在转发 `session.prompt` 前绑定该引用；普通 prompt 和未选择标签页的旧客户端继续使用原有 tab affinity。
+
 Windows Desktop 预构建安装与三种安装方式见[主安装指南](https://github.com/iconFehu/dsh-browser#quick-install)：标准 web 的 CLI 注册、预构建扩展 ZIP、一键安装器。
 
 [English](README.md) | 中文

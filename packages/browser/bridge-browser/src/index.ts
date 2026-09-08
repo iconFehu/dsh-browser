@@ -225,6 +225,22 @@ function mountBridge(
     },
   }
   ctx.effect(() => ctx.webServer.register(configRoute), 'bridge-browser: /ext/bridge-config route')
+  const tabsRoute: WebRoute = {
+    kind: 'exact',
+    path: '/ext/browser-tabs',
+    handler: async (_req, res) => {
+      try {
+        const result = await server.requestTool('browser_tabs_list', {}, new AbortController().signal, resolved.toolTimeoutMs)
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+        res.end(typeof result === 'object' && result !== null && typeof (result as { text?: unknown }).text === 'string'
+          ? (result as { text: string }).text : JSON.stringify(result))
+      } catch (error: unknown) {
+        res.writeHead(503, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+        res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }))
+      }
+    },
+  }
+  ctx.effect(() => ctx.webServer.register(tabsRoute), 'bridge-browser: /ext/browser-tabs route')
 
   ctx.effect(() => {
     const disposers = registerBrowserTools(ctx, server, {

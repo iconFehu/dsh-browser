@@ -42,6 +42,7 @@ import {
 } from './pending-questions.ts'
 import { normalizeTrustedOrigin } from '../security/trusted-origins.ts'
 import type { PageSelection } from '../selection.ts'
+import type { BrowserTabRef } from '../background/tab-registry.ts'
 import {
   selectionPromptText,
   selectionSourceLabel,
@@ -615,8 +616,24 @@ export function App(): React.JSX.Element {
   const [settings, setSettings] = useState<PanelSettings | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [draft, setDraft] = useState<ComposerDraft<DraftImage>>(() => emptyComposerDraft())
+  const [browserTabs, setBrowserTabs] = useState<BrowserTabRef[]>([])
+  const [tabPicker, setTabPicker] = useState(false)
+  const [tabQuery, setTabQuery] = useState('')
+  const [selectedTabRef, setSelectedTabRef] = useState<string | null>(null)
   const input = draft.text
   const draftImages = draft.images
+  const matchingTabs = browserTabs.filter((tab) => `${tab.title} ${tab.url}`.toLocaleLowerCase().includes(tabQuery.toLocaleLowerCase())).slice(0, 8)
+
+  useEffect(() => {
+    const optionalApi = api as PanelApi & {
+      onBrowserTabs?: (callback: (tabs: BrowserTabRef[]) => void) => () => void
+      listBrowserTabs?: () => Promise<BrowserTabRef[]>
+    }
+    const off = optionalApi.onBrowserTabs?.(setBrowserTabs) ?? (() => {})
+    const tabsPromise = optionalApi.listBrowserTabs?.()
+    void tabsPromise?.then(setBrowserTabs).catch(() => {})
+    return off
+  }, [api])
   const [selection, setSelection] = useState<PageSelection | null>(null)
   const [imageLimits, setImageLimits] = useState<ImageAttachmentLimits | null>(null)
   const [addingImages, setAddingImages] = useState(false)
@@ -1296,6 +1313,7 @@ export function App(): React.JSX.Element {
           submittedImages,
         ),
         ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+        ...(selectedTabRef === null ? {} : { tabRef: selectedTabRef }),
       })
       if (submittedSelection !== null) {
         // Keep the background authoritative while the prompt is in flight.
@@ -2039,7 +2057,12 @@ export function App(): React.JSX.Element {
           <textarea
             value={input}
             onChange={(e) => {
-              if (!sendingRef.current) setDraft((current) => ({ ...current, text: e.target.value }))
+              if (sendingRef.current) return
+              const value = e.target.value
+              setDraft((current) => ({ ...current, text: value }))
+              const at = value.lastIndexOf('@')
+              setTabPicker(at >= 0 && !/[\s\n]/.test(value.slice(at + 1)))
+              setTabQuery(at >= 0 ? value.slice(at + 1) : '')
             }}
             onKeyDown={(e) => {
               // isComposing：输入法组词中的回车是确认选字，不是发送。
@@ -2052,6 +2075,21 @@ export function App(): React.JSX.Element {
             disabled={!sessionReady || busy}
             rows={2}
           />
+          {tabPicker && matchingTabs.length > 0 && (
+            <div className="tab-picker" role="listbox" aria-label="Browser tabs">
+              {matchingTabs.map((tab) => (
+                <button key={tab.ref} type="button" role="option" onClick={() => {
+                  const at = input.lastIndexOf('@')
+                  const next = `${input.slice(0, at)}@${tab.title || tab.url} `
+                  setDraft((current) => ({ ...current, text: next }))
+                  setSelectedTabRef(tab.ref)
+                  setTabPicker(false)
+                }}>
+                  <strong>{tab.title || tab.url}</strong><small>{tab.url}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="composer-actions">
             <span className="composer-actions-start">
               <input

@@ -14,6 +14,7 @@ import type { TabAffinityDecision, TabAffinityState } from '../background/tab-af
 import type { ApprovalDecision, ApprovalRequest } from '../security/approval.ts'
 import { parsePageSelection, type PageSelection } from '../selection.ts'
 import { getUiLocale } from '../i18n.ts'
+import type { BrowserTabRef } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 
 /** Panel-side subset of the extension settings. */
 export type PanelSettings = Settings
@@ -85,7 +86,8 @@ interface SessionResumeHintMessage {
   sessionId: string | null
 }
 
-type BackgroundMessage = RpcResultMessage | RespondResultMessage | StatusMessage | EventMessage | ApprovalRequestMessage | ApprovalResolvedMessage | TabAffinityMessage | TabAffinityRebindResultMessage | SelectionMessage | SessionResumeHintMessage
+type BackgroundMessage = RpcResultMessage | RespondResultMessage | StatusMessage | EventMessage | ApprovalRequestMessage | ApprovalResolvedMessage | TabAffinityMessage | TabAffinityRebindResultMessage | SelectionMessage | SessionResumeHintMessage | BrowserTabsMessage
+type BrowserTabsMessage = { type: 'browser-tabs'; tabs: BrowserTabRef[] }
 
 /** Structured gateway failure retained for product-level error handling. */
 export class PanelRpcError extends Error {
@@ -129,6 +131,8 @@ export interface PanelApi {
   updateSettings(settings: Partial<PanelSettings>): Promise<void>
   rediscover(): Promise<void>
   requestStatus(): Promise<void>
+  onBrowserTabs(callback: (tabs: BrowserTabRef[]) => void): () => void
+  listBrowserTabs(): Promise<BrowserTabRef[]>
 }
 
 /** Connect to the background service worker and return the panel API. */
@@ -150,6 +154,7 @@ export function connectPanel(): PanelApi {
   const tabAffinityListeners = new Set<(state: TabAffinityState) => void>()
   const selectionListeners = new Set<(selection: PageSelection | null) => void>()
   const sessionResumeHintListeners = new Set<(sessionId: string | null) => void>()
+  const browserTabsListeners = new Set<(tabs: BrowserTabRef[]) => void>()
 
   let port: chrome.runtime.Port | null = null
   let reconnectPromise: Promise<chrome.runtime.Port> | null = null
@@ -216,6 +221,9 @@ export function connectPanel(): PanelApi {
       }
       case 'session.resume-hint':
         for (const listener of sessionResumeHintListeners) listener(msg.sessionId)
+        break
+      case 'browser-tabs':
+        for (const listener of browserTabsListeners) listener((msg as BrowserTabsMessage).tabs)
         break
     }
   }
@@ -383,6 +391,15 @@ export function connectPanel(): PanelApi {
     onSessionResumeHint(callback) {
       sessionResumeHintListeners.add(callback)
       return () => { sessionResumeHintListeners.delete(callback) }
+    },
+    onBrowserTabs(callback) { browserTabsListeners.add(callback); return () => { browserTabsListeners.delete(callback) } },
+    listBrowserTabs() {
+      return new Promise<BrowserTabRef[]>((resolve, reject) => {
+        const id = crypto.randomUUID()
+        const entry = { resolve: (value: unknown) => resolve(value as BrowserTabRef[]), reject }
+        pending.set(id, entry)
+        void send({ type: 'browser-tabs.request', id }, { kind: 'rpc', id }).catch(reject)
+      })
     },
     respondToApproval(id, decision) {
       return send({ type: 'approval.response', id, decision })
