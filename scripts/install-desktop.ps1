@@ -1,7 +1,7 @@
-﻿# Windows PowerShell 5.1+; no Git, Node, pnpm or administrator privileges required.
+# Windows PowerShell 5.1+; no Git, Node, pnpm or administrator privileges required.
 [CmdletBinding()]
 param(
-  [string]$Version = '0.1.6',
+  [string]$Version = '0.1.7',
   [string]$BundleDirectory,
   [string]$DshHome = $(if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }),
   [switch]$NoOpen

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 dsh-browser 一键安装（Windows）：支持远程托管安装和本地 checkout 安装。
 dsh-browser one-command install (Windows): supports both managed remote installs and local checkout installs.
@@ -24,7 +24,7 @@ $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
 
 $Repository = 'iconFehu/dsh-browser'
-$RemoteRef = 'v0.1.6'
+$RemoteRef = 'v0.1.7'
 $DshHomeDir = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $HOME '.dsh' }
 $ManagedRoot = Join-Path $DshHomeDir 'dsh-browser'
 # Same marker filename as scripts/install.sh: one managed root, one definition of "managed".

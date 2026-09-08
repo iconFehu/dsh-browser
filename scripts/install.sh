@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPOSITORY="iconFehu/dsh-browser"
-REMOTE_REF="v0.1.6"
+REMOTE_REF="v0.1.7"
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
 MANAGED_ROOT="$DSH_HOME_DIR/dsh-browser"
 MANAGED_MARKER="$MANAGED_ROOT/.managed-by-install-sh"
