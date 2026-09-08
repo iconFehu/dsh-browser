@@ -1,4 +1,4 @@
-# Windows PowerShell 5.1+; no Git, Node, pnpm or administrator privileges required.
+﻿# Windows PowerShell 5.1+; no Git, Node, pnpm or administrator privileges required.
 [CmdletBinding()]
 param(
   [string]$Version = '0.1.7',
