@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 dsh-browser 一键安装（Windows）：支持远程托管安装和本地 checkout 安装。
 dsh-browser one-command install (Windows): supports both managed remote installs and local checkout installs.
