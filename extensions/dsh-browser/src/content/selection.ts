@@ -151,7 +151,7 @@ export class SelectionWatcher {
       // Opening the panel arms the watcher, and the text the user highlighted
       // just before opening it fires no further selectionchange. Reading it
       // needs no page gesture: the user acted on the extension to get here.
-      this.flushNow(false)
+      try { this.flushNow(false) } catch { /* page torn down */ }
       return true
     }
     document.removeEventListener('selectionchange', this.onSelectionChange)
@@ -181,7 +181,9 @@ export class SelectionWatcher {
 
   private readonly onSelectionChange = (): void => {
     this.cancel()
-    this.timer = setTimeout(() => { this.flushNow(true) }, this.settleMs)
+    this.timer = setTimeout(() => {
+      try { this.flushNow(true) } catch { /* page torn down */ }
+    }, this.settleMs)
   }
 
   private flushNow(requireGesture: boolean): void {
