@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DSH Browser Native",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ChatGPT-compatible browser capabilities for DSH and Codex backends.",
   "permissions": [
     "alarms", "bookmarks", "debugger", "downloads", "history", "nativeMessaging",

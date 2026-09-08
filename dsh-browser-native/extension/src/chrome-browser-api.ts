@@ -17,11 +17,12 @@ export class ChromeBrowserApi implements BrowserApi {
 
   async getTabs(query?: { windowId?: number; active?: boolean }): Promise<readonly BrowserTab[]> {
     const tabs = await chrome.tabs.query({ windowId: query?.windowId, active: query?.active })
-    return tabs.filter((tab) => tab.id !== undefined && tab.windowId !== undefined).map((tab) => ({ id: tab.id!, windowId: tab.windowId!, title: tab.title, url: tab.url, active: tab.active }))
+    return tabs.filter((tab): tab is chrome.tabs.Tab => tab !== undefined && tab.id !== undefined && tab.windowId !== undefined).map((tab) => ({ id: tab.id!, windowId: tab.windowId!, title: tab.title, url: tab.url, active: tab.active }))
   }
 
   async updateTab(tabId: number, update: { active?: boolean; pinned?: boolean; muted?: boolean }): Promise<BrowserTab> {
     const tab = await chrome.tabs.update(tabId, update)
+    if (!tab) throw new Error('Chrome returned no tab')
     if (tab.id === undefined || tab.windowId === undefined) throw new Error('Chrome returned a tab without an id')
     return { id: tab.id, windowId: tab.windowId, title: tab.title, url: tab.url, active: tab.active }
   }
@@ -32,6 +33,7 @@ export class ChromeBrowserApi implements BrowserApi {
     const override = this.viewportOverrides.get(tabId)
     if (override) return override
     const tab = await chrome.tabs.get(tabId)
+    if (!tab) throw new Error('Chrome returned no tab')
     if (tab.windowId === undefined) throw new Error('Tab has no window')
     const window = await chrome.windows.get(tab.windowId)
     return { width: window.width ?? 0, height: window.height ?? 0 }

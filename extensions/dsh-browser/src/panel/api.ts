@@ -131,8 +131,8 @@ export interface PanelApi {
   updateSettings(settings: Partial<PanelSettings>): Promise<void>
   rediscover(): Promise<void>
   requestStatus(): Promise<void>
-  onBrowserTabs(callback: (tabs: BrowserTabRef[]) => void): () => void
-  listBrowserTabs(): Promise<BrowserTabRef[]>
+  onBrowserTabs?: (callback: (tabs: BrowserTabRef[]) => void) => () => void
+  listBrowserTabs?: () => Promise<BrowserTabRef[]>
 }
 
 /** Connect to the background service worker and return the panel API. */

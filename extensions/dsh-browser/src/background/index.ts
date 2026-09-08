@@ -963,10 +963,10 @@ async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> 
 function routeToolCall(call: ToolCall): void {
   if (bridge === null) return
   if (call.name === 'browser_tabs_list' || call.name === 'browser_tab_bind') {
-    void chrome.tabs.query({}).then((chromeTabs) => chromeTabs.map(tabRefFromChrome)
-      .filter((tab): tab is BrowserTabRef => tab !== null)
-      .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url)))
-      .then((tabs) => {
+    void chrome.tabs.query({}).then((chromeTabs) => {
+        const tabs = chromeTabs.map(tabRefFromChrome)
+          .filter((tab): tab is BrowserTabRef => tab !== null)
+          .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url))
         if (call.name === 'browser_tab_bind') {
           const ref = typeof call.args.ref === 'string' ? call.args.ref : ''
           const selectedChromeTab = chromeTabs.find(tab => tabRefFromChrome(tab)?.ref === ref)
