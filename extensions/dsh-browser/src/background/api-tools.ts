@@ -44,7 +44,6 @@ export async function downloadMedia(call: ToolCall, tabId: number): Promise<Tool
     if (!downloadUrl && selector) {
       const result = await chrome.scripting.executeScript({
         target: { tabId },
-        allFrames: true,
         func: (selector: string) => {
           const el = document.querySelector(selector) as HTMLImageElement | HTMLVideoElement | HTMLAudioElement | null
           if (!el) return null
