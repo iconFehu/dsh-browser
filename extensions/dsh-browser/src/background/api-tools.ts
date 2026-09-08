@@ -44,11 +44,18 @@ export async function downloadMedia(call: ToolCall, tabId: number): Promise<Tool
     if (!downloadUrl && selector) {
       const result = await chrome.scripting.executeScript({
         target: { tabId },
+        allFrames: true,
         func: (selector: string) => {
           const el = document.querySelector(selector) as HTMLImageElement | HTMLVideoElement | HTMLAudioElement | null
           if (!el) return null
           if (el.tagName === 'IMG') return el.src
-          if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') return el.src
+          if (el.tagName === 'VIDEO' || el.tagName === 'AUDIO') {
+            // Try direct src first
+            if (el.src) return el.src
+            // Fall back to first <source> child element
+            const source = el.querySelector('source')
+            if (source && source.src) return source.src
+          }
           return null
         },
         args: [selector],
