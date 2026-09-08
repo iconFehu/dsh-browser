@@ -1,4 +1,4 @@
-﻿# Exercises the real offline installer in isolated directories, never the user's DSH home.
+# Exercises the real offline installer in isolated directories, never the user's DSH home.
 param([Parameter(Mandatory = $true)][string]$BundleDirectory)
 $ErrorActionPreference = 'Stop'
 $bundle = (Resolve-Path -LiteralPath $BundleDirectory).Path
@@ -26,11 +26,11 @@ try {
   $oldManifest.version = '0.1.3'
   $oldManifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $manifest -Encoding UTF8
   & $installer -BundleDirectory $bundle -DshHome $testHome -NoOpen
-  Assert ((Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).version -eq '0.1.6') 'Version upgrade failed'
+  Assert ((Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).version -eq '0.1.7') 'Version upgrade failed'
   $bad = Join-Path $testRoot 'bad-bundle'
   New-Item -ItemType Directory -Path $bad -Force | Out-Null
-  Copy-Item -LiteralPath (Join-Path $bundle 'dsh-browser-chrome-0.1.6.zip') -Destination $bad
-  Set-Content -LiteralPath (Join-Path $bad 'SHA256SUMS.txt') -Value ('0' * 64 + '  dsh-browser-chrome-0.1.6.zip')
+  Copy-Item -LiteralPath (Join-Path $bundle 'dsh-browser-chrome-0.1.7.zip') -Destination $bad
+  Set-Content -LiteralPath (Join-Path $bad 'SHA256SUMS.txt') -Value ('0' * 64 + '  dsh-browser-chrome-0.1.7.zip')
   Expect-Failure { & $installer -BundleDirectory $bad -DshHome $testHome -NoOpen }
   Assert ((Get-FileHash -LiteralPath $manifest).Hash -eq $before) 'Failed verification damaged old install'
   $unmanaged = Join-Path $testRoot 'unmanaged'
