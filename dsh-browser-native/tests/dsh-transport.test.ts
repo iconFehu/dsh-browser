@@ -18,7 +18,7 @@ describe('DshBridgeTransport', () => {
     const transport = new DshBridgeTransport('ws://127.0.0.1/ext/bridge', 'token', () => socket)
     const connecting = transport.connect(); socket.open(); await connecting
     expect(JSON.parse(socket.sent[0]!)).toMatchObject({ t: 'hello', token: 'token' })
-    const request = transport.request('browser.capability.call', { x: 1 }, new AbortController().signal)
+    const request = transport.request('rpc', { x: 1 }, new AbortController().signal)
     await Promise.resolve()
     const frame = JSON.parse(socket.sent[1]!) as { id: string }
     socket.reply({ t: 'rpc.result', id: frame.id, ok: true, result: { ok: true } })
@@ -31,9 +31,9 @@ describe('DshBridgeTransport', () => {
     const events: unknown[] = []
     transport.onEvent((event) => events.push(event))
     const connecting = transport.connect(); socket.open(); await connecting
-    socket.reply({ t: 'tool.call', id: 'call-1', name: 'browser_snapshot', args: {}, expiresAt: Date.now() + 1000 })
-    expect(events).toEqual([expect.objectContaining({ t: 'tool.call', id: 'call-1' })])
+    socket.reply({ t: 'capability.call', id: 'call-1', capability: 'pageAssets', method: 'snapshot', args: {}, expiresAt: Date.now() + 1000 })
+    expect(events).toEqual([expect.objectContaining({ t: 'capability.call', id: 'call-1', capability: 'pageAssets', method: 'snapshot' })])
     await transport.toolResult?.({ id: 'call-1', ok: true, result: { text: 'ok' } })
-    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ t: 'tool.result', id: 'call-1', ok: true, result: { text: 'ok' } })
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ t: 'capability.result', id: 'call-1', ok: true, result: { text: 'ok' } })
   })
 })

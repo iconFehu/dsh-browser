@@ -53,7 +53,7 @@ export class DshBridgeTransport implements JsonRpcTransport {
 
   async toolResult(result: { id: string; ok: boolean; result?: unknown; error?: { code: string; message: string } }): Promise<void> {
     await this.connect()
-    this.socket?.send(JSON.stringify({ t: 'tool.result', ...result }))
+    this.socket?.send(JSON.stringify({ t: 'capability.result', ...result }))
   }
 
   async close(): Promise<void> { this.socket?.close(); this.socket = undefined; this.failPending(new Error('DSH Bridge closed')) }
@@ -65,7 +65,7 @@ export class DshBridgeTransport implements JsonRpcTransport {
     try { frame = JSON.parse(String(raw)) } catch { return }
     if (!frame || typeof frame !== 'object') return
     const value = frame as Record<string, unknown>
-    if (value.t === 'tool.call' || value.t === 'tool.cancel' || value.t === 'event') {
+    if (value.t === 'capability.call' || value.t === 'capability.cancel' || value.t === 'event') {
       for (const listener of this.eventListeners) listener(value)
       return
     }

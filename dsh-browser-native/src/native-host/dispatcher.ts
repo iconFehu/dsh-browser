@@ -26,7 +26,7 @@ export class HostDispatcher {
       this.pending.get(request.id)?.abort()
       return { type: 'result', id: request.id, ok: true, value: { cancelled: true } }
     }
-    if (request.type === 'tool.result') {
+    if (request.type === 'capability.result') {
       await this.options.router.toolResult(this.options.backend, request)
       return undefined
     }

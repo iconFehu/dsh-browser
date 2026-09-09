@@ -7,7 +7,7 @@ import {
   type ToolCall,
 } from '../src/background/tools.ts'
 
-const CALL: ToolCall = { id: 'tool-1', name: 'browser_snapshot', args: {} }
+const CALL: ToolCall = { id: 'tool-1', name: 'pageAssets.snapshot', args: {} }
 const OK: ToolAnswer = { ok: true, result: { text: 'page' } }
 
 function mockChrome(options: {
@@ -72,11 +72,11 @@ afterEach(() => {
 
 describe('isNavigationCandidateTool', () => {
   it('classifies only tools that may change the page checkpoint', () => {
-    expect(isNavigationCandidateTool('browser_click')).toBe(true)
-    expect(isNavigationCandidateTool('browser_navigate')).toBe(true)
-    expect(isNavigationCandidateTool('browser_open_tab')).toBe(true)
-    expect(isNavigationCandidateTool('browser_snapshot')).toBe(false)
-    expect(isNavigationCandidateTool('browser_type')).toBe(false)
+    expect(isNavigationCandidateTool('management.tabs.click')).toBe(true)
+    expect(isNavigationCandidateTool('management.tabs.navigate')).toBe(true)
+    expect(isNavigationCandidateTool('management.tabs.open')).toBe(true)
+    expect(isNavigationCandidateTool('pageAssets.snapshot')).toBe(false)
+    expect(isNavigationCandidateTool('management.tabs.type')).toBe(false)
   })
 })
 
@@ -109,7 +109,7 @@ describe('dispatchToolCall', () => {
     expect(chromeMock.sendMessage).toHaveBeenCalledTimes(2)
     expect(chromeMock.sendMessage).toHaveBeenLastCalledWith(7, {
       type: 'DSH_ACTION',
-      action: 'browser_snapshot',
+      action: 'pageAssets.snapshot',
       args: { delta: false },
       budget,
     }, { documentId: 'document-7' })
@@ -195,7 +195,7 @@ describe('dispatchToolCall', () => {
   })
 
   it('routes an element action to the requested frame and removes routing metadata', async () => {
-    const call: ToolCall = { id: 'tool-frame', name: 'browser_click', args: { frame: 8, index: 3 } }
+    const call: ToolCall = { id: 'tool-frame', name: 'management.tabs.click', args: { frame: 8, index: 3 } }
     const chromeMock = mockChrome({
       tab: { id: 22, url: 'https://app.example/' },
       frames: [
@@ -204,7 +204,7 @@ describe('dispatchToolCall', () => {
       ],
       respond: (message, frameId) => {
         const action = (message as { action?: string }).action
-        if (action === 'browser_snapshot') return { ok: true, result: { text: `frame ${frameId}` } }
+        if (action === 'pageAssets.snapshot') return { ok: true, result: { text: `frame ${frameId}` } }
         return OK
       },
     })
@@ -214,7 +214,7 @@ describe('dispatchToolCall', () => {
     await expect(dispatchToolCall(call, 'auto', undefined, async () => 'approved')).resolves.toEqual(OK)
     expect(chromeMock.sendMessage).toHaveBeenCalledWith(22, {
       type: 'DSH_ACTION',
-      action: 'browser_click',
+      action: 'management.tabs.click',
       args: { index: 3 },
       budget: expect.objectContaining({ maxItems: 60 }),
       includePageDelta: true,
@@ -222,11 +222,11 @@ describe('dispatchToolCall', () => {
   })
 
   it('returns automatic action deltas inside a fresh untrusted-content boundary', async () => {
-    const call: ToolCall = { id: 'tool-delta', name: 'browser_click', args: { index: 3 } }
+    const call: ToolCall = { id: 'tool-delta', name: 'management.tabs.click', args: { index: 3 } }
     const budget = { maxItems: 10, maxChars: 1_000 }
     const chromeMock = mockChrome({
       tab: { id: 33, url: 'https://app.example/' },
-      respond: (message) => (message as { action?: string }).action === 'browser_snapshot'
+      respond: (message) => (message as { action?: string }).action === 'pageAssets.snapshot'
         ? { ok: true, result: { text: 'Initial page' } }
         : {
             ok: true,
@@ -251,7 +251,7 @@ describe('dispatchToolCall', () => {
     expect(result.pageContent).toBeUndefined()
     expect(chromeMock.sendMessage).toHaveBeenCalledWith(33, {
       type: 'DSH_ACTION',
-      action: 'browser_click',
+      action: 'management.tabs.click',
       args: { index: 3 },
       budget,
       includePageDelta: true,
@@ -259,10 +259,10 @@ describe('dispatchToolCall', () => {
   })
 
   it('does not extract or forward an action delta when reads require approval', async () => {
-    const call: ToolCall = { id: 'tool-private-delta', name: 'browser_click', args: { index: 2 } }
+    const call: ToolCall = { id: 'tool-private-delta', name: 'management.tabs.click', args: { index: 2 } }
     const chromeMock = mockChrome({
       tab: { id: 34, url: 'https://private.example/' },
-      respond: (message) => (message as { action?: string }).action === 'browser_snapshot'
+      respond: (message) => (message as { action?: string }).action === 'pageAssets.snapshot'
         ? { ok: true, result: { text: 'Initial private page' } }
         : {
             ok: true,
@@ -280,7 +280,7 @@ describe('dispatchToolCall', () => {
     expect(answer).toEqual({ ok: true, result: { text: 'Clicked [2].' } })
     expect(chromeMock.sendMessage).toHaveBeenCalledWith(34, {
       type: 'DSH_ACTION',
-      action: 'browser_click',
+      action: 'management.tabs.click',
       args: { index: 2 },
     }, { documentId: 'document-34' })
   })
@@ -293,11 +293,11 @@ describe('dispatchToolCall', () => {
     const chromeMock = mockChrome({
       tab: { id: 35, url: 'https://app.example/start' },
       frames,
-      respond: (message) => (message as { action?: string }).action === 'browser_navigate'
+      respond: (message) => (message as { action?: string }).action === 'management.tabs.navigate'
         ? {
             ok: true,
             result: {
-              text: 'Navigating to https://app.example/next. Call browser_snapshot again after the page loads.',
+              text: 'Navigating to https://app.example/next. Call pageAssets.snapshot again after the page loads.',
               navigationPending: true,
             },
           }
@@ -305,7 +305,7 @@ describe('dispatchToolCall', () => {
     })
 
     const pending = dispatchToolCall(
-      { id: 'tool-navigation', name: 'browser_navigate', args: { url: 'https://app.example/next' } },
+      { id: 'tool-navigation', name: 'management.tabs.navigate', args: { url: 'https://app.example/next' } },
       'auto',
       budget,
       async () => 'approved',
@@ -324,11 +324,11 @@ describe('dispatchToolCall', () => {
     expect(text).toContain('Navigation completed')
     expect(text).toContain('Title: Next page')
     expect(text).toContain('UNTRUSTED_PAGE_CONTENT')
-    expect(text).not.toContain('Call browser_snapshot again')
+    expect(text).not.toContain('Call pageAssets.snapshot again')
     expect(text.length).toBeLessThanOrEqual(budget.maxChars)
     expect(chromeMock.sendMessage).toHaveBeenCalledTimes(2)
     expect(chromeMock.sendMessage).toHaveBeenLastCalledWith(35, expect.objectContaining({
-      action: 'browser_snapshot',
+      action: 'pageAssets.snapshot',
       args: { delta: false },
       budget: expect.objectContaining({ maxChars: expect.any(Number) }),
     }), { documentId: 'document-after' })
@@ -340,14 +340,14 @@ describe('dispatchToolCall', () => {
       respond: () => ({
         ok: true,
         result: {
-          text: 'Navigating to https://app.example/next. Call browser_snapshot again after the page loads.',
+          text: 'Navigating to https://app.example/next. Call pageAssets.snapshot again after the page loads.',
           navigationPending: true,
         },
       }),
     })
 
     const answer = await dispatchToolCall(
-      { id: 'tool-private-navigation', name: 'browser_navigate', args: { url: 'https://app.example/next' } },
+      { id: 'tool-private-navigation', name: 'management.tabs.navigate', args: { url: 'https://app.example/next' } },
       'ask',
       undefined,
       async () => 'approved',
@@ -355,13 +355,13 @@ describe('dispatchToolCall', () => {
 
     expect(answer).toEqual({
       ok: true,
-      result: { text: expect.stringContaining('Call browser_snapshot again') },
+      result: { text: expect.stringContaining('Call pageAssets.snapshot again') },
     })
     expect(chromeMock.sendMessage).toHaveBeenCalledTimes(1)
   })
 
-  it('wraps browser_get_text output in the same untrusted-content boundary', async () => {
-    const call: ToolCall = { id: 'tool-text', name: 'browser_get_text', args: {} }
+  it('wraps pageAssets.getText output in the same untrusted-content boundary', async () => {
+    const call: ToolCall = { id: 'tool-text', name: 'pageAssets.getText', args: {} }
     mockChrome({ tab: { id: 24, url: 'https://app.example/' }, responses: [{ ok: true, result: { text: 'page text' } }] })
 
     const answer = await dispatchToolCall(call, 'auto', { maxItems: 10, maxChars: 1_000 })
@@ -388,7 +388,7 @@ describe('dispatchToolCall', () => {
       ok: false,
       error: {
         code: 'action-failed',
-        message: 'The user denied the browser approval request for "browser_snapshot".',
+        message: 'The user denied the browser approval request for "pageAssets.snapshot".',
       },
     })
     expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
@@ -399,7 +399,7 @@ describe('dispatchToolCall', () => {
   })
 
   it('reports when no side panel can receive a state-changing approval', async () => {
-    const call: ToolCall = { id: 'tool-denied', name: 'browser_press', args: { key: 'Enter' } }
+    const call: ToolCall = { id: 'tool-denied', name: 'management.tabs.press', args: { key: 'Enter' } }
     const chromeMock = mockChrome({ tab: { id: 26, url: 'https://app.example/' } })
 
     const answer = await dispatchToolCall(call, 'auto')
@@ -408,14 +408,14 @@ describe('dispatchToolCall', () => {
       ok: false,
       error: {
         code: 'action-failed',
-        message: 'No browser side panel was available to receive or complete the approval request for "browser_press".',
+        message: 'No browser side panel was available to receive or complete the approval request for "management.tabs.press".',
       },
     })
     expect(chromeMock.sendMessage).not.toHaveBeenCalled()
   })
 
   it('returns an approval timeout without treating it as a user denial', async () => {
-    const call: ToolCall = { id: 'tool-timeout', name: 'browser_press', args: { key: 'Enter' } }
+    const call: ToolCall = { id: 'tool-timeout', name: 'management.tabs.press', args: { key: 'Enter' } }
     const chromeMock = mockChrome({ tab: { id: 27, url: 'https://app.example/' } })
 
     const answer = await dispatchToolCall(call, 'auto', undefined, async () => 'timed-out')
@@ -424,14 +424,14 @@ describe('dispatchToolCall', () => {
       ok: false,
       error: {
         code: 'timeout',
-        message: 'The browser approval request for "browser_press" timed out before the user responded.',
+        message: 'The browser approval request for "management.tabs.press" timed out before the user responded.',
       },
     })
     expect(chromeMock.sendMessage).not.toHaveBeenCalled()
   })
 
   it('does not dispatch an action after its bridge call is cancelled during approval', async () => {
-    const call: ToolCall = { id: 'tool-cancelled', name: 'browser_press', args: { key: 'Enter' } }
+    const call: ToolCall = { id: 'tool-cancelled', name: 'management.tabs.press', args: { key: 'Enter' } }
     const controller = new AbortController()
     const chromeMock = mockChrome({ tab: { id: 27, url: 'https://app.example/' } })
     const authorize = vi.fn(async () => {
@@ -446,7 +446,7 @@ describe('dispatchToolCall', () => {
   })
 
   it('does not dispatch an approved action after tab affinity changes', async () => {
-    const call: ToolCall = { id: 'tool-switched', name: 'browser_press', args: { key: 'Enter' } }
+    const call: ToolCall = { id: 'tool-switched', name: 'management.tabs.press', args: { key: 'Enter' } }
     let targetAllowed = true
     const chromeMock = mockChrome({ tab: { id: 28, url: 'https://app.example/' } })
     const authorize = vi.fn(async () => {
@@ -483,13 +483,13 @@ describe('dispatchToolCall', () => {
     frames[1] = { ...frames[1]!, documentId: 'child-v2' }
 
     const answer = await dispatchToolCall(
-      { id: 'stale-click', name: 'browser_click', args: { frame: 3, index: 4 } },
+      { id: 'stale-click', name: 'management.tabs.click', args: { frame: 3, index: 4 } },
       'auto',
       undefined,
       async () => 'approved',
     )
 
-    expect(answer).toMatchObject({ ok: false, error: { message: expect.stringContaining('Call browser_snapshot again') } })
+    expect(answer).toMatchObject({ ok: false, error: { message: expect.stringContaining('Call pageAssets.snapshot again') } })
     expect(chromeMock.sendMessage).not.toHaveBeenCalled()
   })
 
@@ -504,7 +504,7 @@ describe('dispatchToolCall', () => {
     })
 
     const answer = await dispatchToolCall(
-      { id: 'changed-origin', name: 'browser_press', args: { key: 'Enter' } },
+      { id: 'changed-origin', name: 'management.tabs.press', args: { key: 'Enter' } },
       'auto',
       undefined,
       authorize,
@@ -525,7 +525,7 @@ describe('dispatchToolCall', () => {
     })
 
     const answer = await dispatchToolCall(
-      { id: 'changed-document', name: 'browser_press', args: { key: 'Enter' } },
+      { id: 'changed-document', name: 'management.tabs.press', args: { key: 'Enter' } },
       'auto',
       undefined,
       authorize,
@@ -593,7 +593,7 @@ describe('dispatchOpenTab', () => {
 
     const bindCreatedTab = vi.fn(() => true)
     const open = dispatchOpenTab(
-      { id: 'open-1', name: 'browser_open_tab', args: { url: 'https://docs.example/' } },
+      { id: 'open-1', name: 'management.tabs.open', args: { url: 'https://docs.example/' } },
       9,
       'auto',
       { maxItems: 60, maxChars: 12_000 },
@@ -636,7 +636,7 @@ describe('dispatchOpenTab', () => {
     const create = vi.fn()
     vi.stubGlobal('chrome', { tabs: { create } })
     const answer = await dispatchOpenTab(
-      { id: 'open-bad', name: 'browser_open_tab', args: { url: 'javascript:alert(1)' } },
+      { id: 'open-bad', name: 'management.tabs.open', args: { url: 'javascript:alert(1)' } },
       1,
       'auto',
       undefined,
@@ -676,7 +676,7 @@ describe('dispatchOpenTab', () => {
     })
     const bindCreatedTab = vi.fn(() => true)
     const open = dispatchOpenTab(
-      { id: 'open-cancel', name: 'browser_open_tab', args: { url: 'https://docs.example/' } },
+      { id: 'open-cancel', name: 'management.tabs.open', args: { url: 'https://docs.example/' } },
       2,
       'auto',
       undefined,
@@ -726,7 +726,7 @@ describe('dispatchOpenTab', () => {
       return true
     })
     const open = dispatchOpenTab(
-      { id: 'open-committed', name: 'browser_open_tab', args: { url: 'https://docs.example/' } },
+      { id: 'open-committed', name: 'management.tabs.open', args: { url: 'https://docs.example/' } },
       3,
       'auto',
       { maxItems: 60, maxChars: 12_000 },
@@ -747,7 +747,7 @@ describe('dispatchOpenTab', () => {
     const answer = await open
     expect(answer.ok).toBe(true)
     expect((answer.result as { text: string }).text).toContain('Opened a new tab')
-    expect((answer.result as { text: string }).text).toContain('Call browser_snapshot again')
+    expect((answer.result as { text: string }).text).toContain('Call pageAssets.snapshot again')
     expect(remove).not.toHaveBeenCalled()
     expect(sendMessage).not.toHaveBeenCalled()
   })

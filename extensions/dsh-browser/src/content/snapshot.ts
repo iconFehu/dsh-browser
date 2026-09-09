@@ -287,7 +287,7 @@ function appendTruncationNotes(lines: string[], view: SnapshotView): void {
   if (view.truncated.mainChars > 0) notes.push(`Main content truncated by ${view.truncated.mainChars} characters`)
   if (view.truncated.itemsDropped > 0) notes.push(`${view.truncated.itemsDropped} additional elements omitted`)
   if (view.truncated.formsDropped > 0) notes.push(`${view.truncated.formsDropped} additional form fields omitted`)
-  if (notes.length > 0) lines.push(`\n(${notes.join('; ')}. Use browser_get_text or specify region for more content.)`)
+  if (notes.length > 0) lines.push(`\n(${notes.join('; ')}. Use pageAssets.getText or specify region for more content.)`)
 }
 
 export function renderSnapshot(view: SnapshotView, delta: boolean, maxChars: number = view.budgetChars): string {

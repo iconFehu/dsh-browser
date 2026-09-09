@@ -108,7 +108,7 @@ export interface BridgeServerDeps {
   pingIntervalMs?: number
 }
 
-/** One in-flight tool call awaiting the extension's `tool.result`. */
+/** One in-flight tool call awaiting the extension's `capability.result`. */
 interface PendingTool {
   resolve: (result: unknown) => void
   reject: (error: BridgeToolError) => void
@@ -212,7 +212,7 @@ export class BridgeServer {
         // The extension may be paused on a user approval after the caller has
         // stopped waiting. Withdraw that approval before settling locally so
         // a late click cannot execute an expired action.
-        sendFrame(conn.ws, { t: 'tool.cancel', id })
+        sendFrame(conn.ws, { t: 'capability.cancel', id })
         settle(error)
       }
       const onAbort = (): void => {
@@ -224,9 +224,10 @@ export class BridgeServer {
       signal.addEventListener('abort', onAbort, { once: true })
       this.pendingTools.set(id, { resolve, reject, timer })
       conn.ws.send(JSON.stringify({
-        t: 'tool.call',
-        id,
-        name,
+      t: 'capability.call',
+      id,
+      capability: name.split('.')[0]!,
+      method: name.split('.').slice(1).join('.'),
         args,
         expiresAt,
         ...(sessionId === undefined ? {} : { sessionId }),
@@ -364,7 +365,7 @@ export class BridgeServer {
       case 'respond':
         void this.handleRespond(frame)
         break
-      case 'tool.result':
+      case 'capability.result':
         this.settleTool(frame.id, frame.ok, frame.ok ? frame.result : frame.error)
         break
       case 'pong':
@@ -373,8 +374,8 @@ export class BridgeServer {
       case 'rpc.result':
       case 'respond.result':
       case 'event':
-      case 'tool.call':
-      case 'tool.cancel':
+      case 'capability.call':
+      case 'capability.cancel':
       case 'ping':
       case 'error':
         // Protocol violations and unsolicited server-side shapes are ignored;
@@ -464,7 +465,7 @@ export class BridgeServer {
     try {
       const prepared = frame.method === 'session.prompt' ? extractBrowserTabMarker(frame.payload) : { payload: frame.payload }
       if (prepared.tabRef !== undefined) {
-        await this.requestTool('browser_tab_bind', { ref: prepared.tabRef }, conn.abort.signal, this.deps.toolTimeoutMs, sessionIdFromPayload(frame.payload))
+        await this.requestTool('management.tabs.bind', { ref: prepared.tabRef }, conn.abort.signal, this.deps.toolTimeoutMs, sessionIdFromPayload(frame.payload))
       }
       const result = await this.deps.api.call({
         rpcId: frame.id,

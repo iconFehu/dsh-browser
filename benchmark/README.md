@@ -82,7 +82,7 @@ node benchmark/report.mjs benchmark/results/<file>.jsonl
 ## 公平性控制
 
 - 两边共享同一提示词、任务实例、DSH profile、模型选择、浏览器尺寸、locale 和时区。
-- Playwright 适配器使用与扩展相同的 `browser_snapshot`、`browser_click`、`browser_type` 等模型可见工具名、说明、参数 schema 和通用系统提示；动作后的 DOM 稳定等待策略也使用相同时间预算。
+- Playwright 适配器使用与扩展相同的 `pageAssets.snapshot`、`management.tabs.click`、`management.tabs.type` 等模型可见工具名、说明、参数 schema 和通用系统提示；动作后的 DOM 稳定等待策略也使用相同时间预算。
 - 两个 DSH 进程使用隔离的 session/storage 目录，避免相互污染；模型凭据仍来自同一个本机 DSH profile。
 - 同任务、同 seed 形成一个 pair，谁先运行由确定性哈希交替，降低固定顺序导致的热身偏差。
 - 提示词禁止非 `browser_*` 工具，validator 也会把使用其他工具的运行判为失败。

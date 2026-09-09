@@ -4,7 +4,7 @@ Windows Desktop prebuilt installation and the three install methods live in the 
 
 English | [中文](README.zh.md)
 
-The **browser-operation bridge** for dsh: mounts a token-authenticated WebSocket carrier (`/ext/bridge`) that the Chrome extension connects to, projects its calls onto dsh 0.1.2 Typert Remotes, follows Session and Remote Event streams per connection, and registers the text-only `browser_*` tool set that reads and operates the user's active tab through the extension — click elements, fill forms, scroll, and navigate in the real browser, login state preserved. The side panel is the conversation entry; the tools are the product.
+The browser-operation bridge for dsh mounts a token-authenticated WebSocket carrier (`/ext/bridge`), projects calls onto dsh 0.1.2 Typert Remotes, and exposes the capability/method browser surface for the user's active tab.
 
 The package also contributes a DSH Web Client `@` input source. In DSH Desktop or the normal Web UI, typing `@` queries `/ext/browser-tabs`, shows the connected Chrome tabs, and serializes the selected opaque tab reference into the next prompt. The bridge binds that reference before forwarding `session.prompt`; ordinary prompts and clients that do not select a tab retain the existing tab-affinity behavior.
 
@@ -25,7 +25,7 @@ Workspace grouping is best-effort. If the composition has no workspace domain, d
 
 ## Usage
 
-The bridge is a dsh plugin: once it is registered into a `web` profile, the next `dsh web` boot mounts `/ext/bridge` and the `browser_*` tools. Registration is a per-home, per-profile action — the installers below skip it when the profile already lists the plugin.
+The bridge is a dsh plugin: once registered into a `web` profile, the next `dsh web` boot mounts `/ext/bridge` and the eight capability namespaces.
 
 **CLI registration (Method A, standard web).** `@yuxianglin/dsh-bridge-browser@0.0.5` is published on npm. With Node.js and the pinned dsh CLI:
 
@@ -80,8 +80,8 @@ The installer copies the unpacked extension to `~/.dsh/browser-extension` and op
 
 Frames are JSON objects discriminated by `t`, defined in [`protocol.ts`](src/protocol.ts) — the single source of truth shared with the extension through the workspace package's `./src/*` export. The built package also publishes `@yuxianglin/dsh-bridge-browser/protocol` for external consumers.
 
-- Client → server: `hello` (auth + caps), `rpc` (gateway method passthrough), `respond` (resolve a host interaction by its RPC id), `tool.result`, `pong`.
-- Server → client: `hello.ok` (echoes negotiated caps), `rpc.result`, `respond.result` (correlated acceptance or error), `event` (bridge-owned projection of dsh Remote streams and waterfalls), `tool.call`, `ping`, `error`.
+- Client → server: `hello` (auth + caps), `rpc` (gateway method passthrough), `respond` (resolve a host interaction by its RPC id), `capability.result`, `pong`.
+- Server → client: `hello.ok` (echoes negotiated caps), `rpc.result`, `respond.result` (correlated acceptance or error), `event` (bridge-owned projection of dsh Remote streams and waterfalls), `capability.call`, `ping`, `error`.
 
 Each `respond` carries a globally unique transport id as well as the host interaction's `rpcId`. The extension routes its receipt only to the panel that initiated it and rejects pending responses on timeout, panel closure, or bridge disconnection.
 
@@ -89,21 +89,21 @@ Each `respond` carries a globally unique transport id as well as the host intera
 
 | Tool | Purpose |
 |---|---|
-| `browser_snapshot` | Structured text snapshot (title/URL/main/inventory/forms); `delta: true` returns only changes. |
-| `browser_click` / `browser_type` / `browser_press` | Operate inventory items by stable index. |
-| `browser_scroll` / `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Page movement. |
-| `browser_get_text` / `browser_wait` | Read regions / settle detection. |
-| `browser_dom` | Deep per-frame text read via full CDP (shadow DOM, uninjectable iframes); no inventory. |
-| `browser_diagnostics` | Console/Log/network-failure summary via full CDP. |
-| `browser_network` | Recent requests; `includeBodies` fetches capped response bodies. |
-| `browser_performance` | Chrome performance counter deltas. |
-| `browser_screenshot` / `browser_export_pdf` | Local PNG/PDF export through a save dialog (Chrome developer mode). |
+| `pageAssets.snapshot` | Structured text snapshot (title/URL/main/inventory/forms); `delta: true` returns only changes. |
+| `management.tabs.click` / `management.tabs.type` / `management.tabs.press` | Operate inventory items by stable index. |
+| `management.tabs.scroll` / `management.tabs.navigate` / `management.tabs.open` / `management.tabs.back` / `management.tabs.forward` / `management.tabs.reload` | Page movement. |
+| `pageAssets.getText` / `management.tabs.wait` | Read regions / settle detection. |
+| `cdp.dom` | Deep per-frame text read via full CDP (shadow DOM, uninjectable iframes); no inventory. |
+| `cdp.diagnostics` | Console/Log/network-failure summary via full CDP. |
+| `cdp.network` | Recent requests; `includeBodies` fetches capped response bodies. |
+| `cdp.performance` | Chrome performance counter deltas. |
+| `cdp.captureScreenshot` / `cdp.exportPdf` | Local PNG/PDF export through a save dialog (Chrome developer mode). |
 
 The last six tools require **browser developer mode (full CDP)** — the extension's Settings switch is off by default and Chrome-only; when it is off or unsupported they answer `feature-unavailable` instead of falling back. They are observation-only: click/type/press/scroll/navigation remain on the numbered-inventory tools above.
 
 ## Model Experience
 
-- **Token effect**: one `browser_snapshot` (default 32k chars) costs roughly 8–10k tokens for typical English text; the exact count depends on language and tokenizer, and delta snapshots cost a fraction of that. The system-prompt section tells the model to snapshot on demand rather than hoard page text.
+- **Token effect**: one `pageAssets.snapshot` (default 32k chars) costs roughly 8–10k tokens for typical English text; the exact count depends on language and tokenizer, and delta snapshots cost a fraction of that. The system-prompt section tells the model to snapshot on demand rather than hoard page text.
 - **KV-cache effect**: none beyond ordinary tool results; snapshots are not cached server-side.
 - **Latency**: each action awaits the extension's real-page execution plus settle detection (typically 0.2–2s; navigation up to 5s).
 - **Failure modes**: `bridge-closed` (extension not connected), `timeout`, `no-active-tab`, `content-unavailable` (page needs a refresh), `action-failed` (stale inventory index — the model should re-snapshot).

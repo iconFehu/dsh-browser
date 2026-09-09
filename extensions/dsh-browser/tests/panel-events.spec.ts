@@ -71,7 +71,7 @@ describe('rowFromEvent', () => {
 
   it('skips assistant events that contain only tool or blank blocks', () => {
     expect(rowFromEvent(ev('assistant/message', {
-      message: { content: [{ type: 'tool_use', name: 'browser_snapshot' }] },
+      message: { content: [{ type: 'tool_use', name: 'pageAssets.snapshot' }] },
     }))).toBeNull()
     expect(rowFromEvent(ev('assistant/message', {
       message: { content: [{ type: 'text', text: '   \n' }] },
@@ -80,17 +80,17 @@ describe('rowFromEvent', () => {
 
   it('returns null for non-message events', () => {
     expect(rowFromEvent(ev('turn/start', {}))).toBeNull()
-    expect(rowFromEvent(ev('tool/call', { name: 'browser_click' }))).toBeNull()
+    expect(rowFromEvent(ev('tool/call', { name: 'management.tabs.click' }))).toBeNull()
   })
 })
 
 describe('toolSummary', () => {
   it('appends the inventory index when present', () => {
-    expect(toolSummary('browser_click', '{"index":7}', 'zh')).toBe('点击元素 #7')
-    expect(toolSummary('browser_snapshot', '{"delta":true}', 'zh')).toBe('读取页面')
-    expect(toolSummary('browser_navigate', 'not-json', 'zh')).toBe('打开页面')
+    expect(toolSummary('management.tabs.click', '{"index":7}', 'zh')).toBe('点击元素 #7')
+    expect(toolSummary('pageAssets.snapshot', '{"delta":true}', 'zh')).toBe('读取页面')
+    expect(toolSummary('management.tabs.navigate', 'not-json', 'zh')).toBe('打开页面')
     expect(toolSummary('custom_tool', '{}', 'zh')).toBe('custom_tool')
-    expect(toolSummary('browser_click', '{"index":7}', 'en')).toBe('Click element #7')
+    expect(toolSummary('management.tabs.click', '{"index":7}', 'en')).toBe('Click element #7')
   })
 })
 
@@ -116,11 +116,11 @@ describe('mergeHistoryRows', () => {
     const events = [
       ev('user/message', { content: [{ type: 'text', text: '操作页面' }], source: { kind: 'user' } }),
       ev('turn/start', {}),
-      ev('tool/call', { name: 'browser_snapshot', arguments: '{}' }),
+      ev('tool/call', { name: 'pageAssets.snapshot', arguments: '{}' }),
       ev('tool/result', {}),
-      ev('tool/call', { name: 'browser_click', arguments: '{"index":7}' }),
+      ev('tool/call', { name: 'management.tabs.click', arguments: '{"index":7}' }),
       ev('tool/result', {}),
-      ev('tool/call', { name: 'browser_click', arguments: '{"index":8}' }),
+      ev('tool/call', { name: 'management.tabs.click', arguments: '{"index":8}' }),
       ev('tool/result', {}),
       ev('assistant/message', { message: { content: [{ type: 'text', text: '已点击' }] } }),
       ev('turn/end', {}),
@@ -136,8 +136,8 @@ describe('mergeHistoryRows', () => {
   it('does not restore empty assistant rows from history', () => {
     let seq = 0
     const rows = mergeHistoryRows([
-      ev('assistant/message', { message: { content: [{ type: 'tool_use', name: 'browser_snapshot' }] } }),
-      ev('tool/call', { name: 'browser_snapshot', arguments: '{}' }),
+      ev('assistant/message', { message: { content: [{ type: 'tool_use', name: 'pageAssets.snapshot' }] } }),
+      ev('tool/call', { name: 'pageAssets.snapshot', arguments: '{}' }),
       ev('tool/result', {}),
     ], () => { seq += 1; return seq }, 'zh')
     expect(rows).toEqual([{ seq: 1, kind: 'tool', text: '读取页面', status: 'complete' }])

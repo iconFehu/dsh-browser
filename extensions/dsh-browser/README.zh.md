@@ -12,15 +12,15 @@ dsh 的**浏览器操作端**：让模型直接读取并操作你在浏览器里
 
 | 能力 | 动作 | 说明 |
 |---|---|---|
-| 读取页面 | `browser_snapshot` | 标题/URL/正文/编号交互清单/表单字段（敏感值掩码）；`delta: true` 只返回变化，省 token |
-| 点击元素 | `browser_click` | 按编号点击（链接/按钮/复选框…），React/Vue 组件兼容 |
-| 填写表单 | `browser_type` | 输入文本，`replace` 清空重填 |
-| 按键 | `browser_press` | Enter/Tab/Escape/方向键等 |
-| 滚动 | `browser_scroll` | 视口滚动（up/down/top/bottom） |
-| 导航 | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 受控标签页内跳转，或新开标签页并跟随 |
-| 读区域 | `browser_get_text` | 懒加载内容 / 局部文本 |
-| 等待 | `browser_wait` | 页面加载与渲染稳定检测 |
-| 观察（开发者模式） | `browser_dom` / `browser_diagnostics` / `browser_network` / `browser_performance` / `browser_screenshot` / `browser_export_pdf` | 完整 CDP 观察，需在设置中开启**浏览器开发者模式**（默认关闭，Chrome）：深层 shadow/frame 文本读取、console/Log/网络诊断（可按需拉取截断响应体）、性能增量、经保存对话框导出本地 PNG/PDF |
+| 读取页面 | `pageAssets.snapshot` | 标题/URL/正文/编号交互清单/表单字段（敏感值掩码）；`delta: true` 只返回变化，省 token |
+| 点击元素 | `management.tabs.click` | 按编号点击（链接/按钮/复选框…），React/Vue 组件兼容 |
+| 填写表单 | `management.tabs.type` | 输入文本，`replace` 清空重填 |
+| 按键 | `management.tabs.press` | Enter/Tab/Escape/方向键等 |
+| 滚动 | `management.tabs.scroll` | 视口滚动（up/down/top/bottom） |
+| 导航 | `management.tabs.navigate` / `management.tabs.open` / `management.tabs.back` / `management.tabs.forward` / `management.tabs.reload` | 受控标签页内跳转，或新开标签页并跟随 |
+| 读区域 | `pageAssets.getText` | 懒加载内容 / 局部文本 |
+| 等待 | `management.tabs.wait` | 页面加载与渲染稳定检测 |
+| 观察（开发者模式） | `cdp.dom` / `cdp.diagnostics` / `cdp.network` / `cdp.performance` / `cdp.captureScreenshot` / `cdp.exportPdf` | 完整 CDP 观察，需在设置中开启**浏览器开发者模式**（默认关闭，Chrome）：深层 shadow/frame 文本读取、console/Log/网络诊断（可按需拉取截断响应体）、性能增量、经保存对话框导出本地 PNG/PDF |
 | 图片对话 | `session.prompt` / `session.attachment` | 按宿主能力启用图片选择、纯图片发送和持久历史预览 |
 | 引用你划选的内容 | 侧栏输入框 | 你在页面里选中的文字会变成输入框里的引用，随下一条消息一起发送 |
 
@@ -96,7 +96,7 @@ pnpm --filter dsh-browser-extension run test
 - **快照即视图**：模型对页面的全部认知 = 结构化文本（标题/URL/正文/编号元素/表单），默认预算 32k 字符（插件可配，经 `hello.ok` 协商给扩展）。
 - **页面文字是不可信输入**：快照和局部文本读取会放进带随机 nonce 的信任边界，并明确要求模型不得把网页中的命令当成指令。这只是纵深防御；扩展侧的操作审批才是强制安全边界。
 - **稳定编号**：元素编号跨快照保持（WeakMap + `data-dsh-el`），模型可以说"点 7 号"；页面大改时显式提示"编号已重排"。
-- **delta 模式**：`browser_snapshot({delta:true})` 只返回变化元素的编号，省 token。
+- **delta 模式**：`pageAssets.snapshot({delta:true})` 只返回变化元素的编号，省 token。
 - **隐私**：密码/卡号字段的值永远以 `••••` 呈现，绝不回传；可访问名称从不使用敏感字段的当前值。
 - **标签页绑定**：提交提示时会在模型开始工作前绑定活动标签页；如果直接调用浏览器工具，也会在需要时完成首次绑定。手动切换标签页或窗口后，后续工具会暂停，并询问助手继续原页面还是跟随当前页。选择原页面后允许后台操作，但不会改变用户正在看的页面；选择跟随后会重置页面引用状态。受控页关闭后失败关闭，直到用户选择当前页；切页还会撤销尚未完成的操作审批。
 - **分级审批**：默认「自动共享」允许模型按需读取受控标签页而不额外弹窗；「每次询问」可恢复逐次读取确认，「关闭」会阻断读取。在「每次询问」模式下，读取弹窗可以仅允许一次，也可以持久切回自动读取，之后仍可在设置中关闭。状态变更工具仍然失败关闭，并显示实际 origin 和脱敏动作摘要；用户可拒绝、仅允许一次，或把某个 origin 标记为**对话期间免确认**——条目在设置中移除前一直保留，且仅在侧栏打开时生效；**永久免确认域名**（侧栏关闭也有效）在设置中显式管理。侧栏关闭时，审批最多保留 60 秒；启用通知后，系统通知可把用户带回侧栏。会话级审批只会在其所属会话恢复完成后显示。调用方取消或桥接超时时，会先撤销尚未完成的审批，过期动作不会继续执行。
@@ -106,11 +106,11 @@ pnpm --filter dsh-browser-extension run test
 
 对齐 Codex 的开发者模式，设置里提供**默认关闭**的开关，门控 Chrome-only 的 `debugger` 权限使用。开启且侧栏对话打开时，后台会对受控标签页附加 CDP，**只做观察**——所有动作仍走 content script 管线：
 
-- `browser_dom` 逐帧读取文本，含 open shadow DOM 与沙箱/无法注入的跨源 iframe（不产编号；动作仍以 `browser_snapshot` 为准）。
-- `browser_diagnostics` 汇总 console 报错/警告、Log 条目、失败或 HTTP 4xx/5xx 请求。
-- `browser_network` 列出近期请求（URL 已脱敏）；`includeBodies: true` 时拉取截断的响应体并带敏感数据警告。
-- `browser_performance` 返回 Chrome 计数器增量。
-- `browser_screenshot` / `browser_export_pdf` 把标签页存为 PNG/PDF 并打开**保存对话框**落到本地；捕获内容绝不进入模型通道。
+- `cdp.dom` 逐帧读取文本，含 open shadow DOM 与沙箱/无法注入的跨源 iframe（不产编号；动作仍以 `pageAssets.snapshot` 为准）。
+- `cdp.diagnostics` 汇总 console 报错/警告、Log 条目、失败或 HTTP 4xx/5xx 请求。
+- `cdp.network` 列出近期请求（URL 已脱敏）；`includeBodies: true` 时拉取截断的响应体并带敏感数据警告。
+- `cdp.performance` 返回 Chrome 计数器增量。
+- `cdp.captureScreenshot` / `cdp.exportPdf` 把标签页存为 PNG/PDF 并打开**保存对话框**落到本地；捕获内容绝不进入模型通道。
 
 这些工具遵循读共享策略（`auto`/`ask`/`off`），把页面/浏览器文本包进不可信边界；在关闭、不支持（Firefox）或标签页不是普通 http(s) 页面时返回 `feature-unavailable`（绝不静默回退）。附加会暂停该标签页你自己的 DevTools；面板关闭、开关关闭、受控页被关闭/替换或导航离开 http(s) 时立即分离。
 
@@ -125,5 +125,5 @@ Chrome 使用 `sidePanel`，Firefox 使用 `sidebar_action`。两者都申请 `s
 - 可访问的跨源 iframe 会进入快照，并通过稳定的 `(frame, index)` 地址执行操作；受保护或已销毁的 frame 会标记为不可访问，不影响整页快照。
 - 验证码/纯图片按钮无法处理——工具结果会标注"存在无文本可访问名的元素"，提示用户手动完成该步。
 - 令牌无自动轮换。
-- `browser_press` 的合成按键不触发浏览器原生默认行为（Tab 焦点移动、方向键、Enter 激活等），仅用于框架内的键盘事件；依赖原生行为的场景请手动操作。
-- `browser_wait` 以加载完成 + 固定静默窗口为准，不观察持续 DOM 更新（连续刷新的 SPA 可能被报为稳定）。
+- `management.tabs.press` 的合成按键不触发浏览器原生默认行为（Tab 焦点移动、方向键、Enter 激活等），仅用于框架内的键盘事件；依赖原生行为的场景请手动操作。
+- `management.tabs.wait` 以加载完成 + 固定静默窗口为准，不观察持续 DOM 更新（连续刷新的 SPA 可能被报为稳定）。

@@ -126,7 +126,7 @@ function sleep(ms: number): Promise<void> {
 function elementOrThrow(ids: ElementIds, index: number): Element {
   const el = ids.elementByIndex(index)
   if (el === undefined) {
-    throw new ActionError('action-failed', `Element [${index}] does not exist; the page may have changed. Call browser_snapshot again to get current indices.`)
+    throw new ActionError('action-failed', `Element [${index}] does not exist; the page may have changed. Call pageAssets.snapshot again to get current indices.`)
   }
   return el
 }
@@ -168,27 +168,27 @@ export interface ActionContext {
 /** Run one named action with its args. */
 export async function runAction(action: string, args: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   switch (action) {
-    case 'browser_snapshot':
+    case 'pageAssets.snapshot':
       return snapshotAction(args, ctx)
-    case 'browser_click':
+    case 'management.tabs.click':
       return clickAction(args, ctx)
-    case 'browser_type':
+    case 'management.tabs.type':
       return typeAction(args, ctx)
-    case 'browser_press':
+    case 'management.tabs.press':
       return pressAction(args, ctx)
-    case 'browser_scroll':
+    case 'management.tabs.scroll':
       return scrollAction(args, ctx)
-    case 'browser_navigate':
+    case 'management.tabs.navigate':
       return navigateAction(args)
-    case 'browser_back':
+    case 'management.tabs.back':
       return historyAction(-1)
-    case 'browser_forward':
+    case 'management.tabs.forward':
       return historyAction(1)
-    case 'browser_reload':
+    case 'management.tabs.reload':
       return reloadAction()
-    case 'browser_get_text':
+    case 'pageAssets.getText':
       return getTextAction(args)
-    case 'browser_wait':
+    case 'management.tabs.wait':
       return waitAction(args, ctx)
     default:
       throw new ActionError('bad-args', `Unknown action: ${action}`)
@@ -249,7 +249,7 @@ async function clickAction(args: Record<string, unknown>, ctx: ActionContext): P
       if (requiresNativeActivation) {
         setTimeout(() => { el.click() }, 0)
         return {
-          text: `Clicked link [${index}] using native browser activation. Call browser_snapshot to read the resulting state.`,
+          text: `Clicked link [${index}] using native browser activation. Call pageAssets.snapshot to read the resulting state.`,
         }
       }
       // Dispatch the click handlers without its default navigation so a
@@ -275,7 +275,7 @@ async function clickAction(args: Record<string, unknown>, ctx: ActionContext): P
       // awaited response. Answer first and navigate in the next task.
       setTimeout(() => { location.href = href.href }, 0)
       return {
-        text: `Clicked link [${index}]. Call browser_snapshot again after navigation settles.`,
+        text: `Clicked link [${index}]. Call pageAssets.snapshot again after navigation settles.`,
         navigationPending: true,
       }
     }
@@ -366,7 +366,7 @@ async function navigateAction(args: Record<string, unknown>): Promise<ActionResu
   // FIRST, then navigate in a fresh task. The model re-snapshots after load.
   setTimeout(() => { location.href = parsed.href }, 0)
   return {
-    text: `Navigating to ${parsed.href}. Call browser_snapshot again after the page loads.`,
+    text: `Navigating to ${parsed.href}. Call pageAssets.snapshot again after the page loads.`,
     navigationPending: true,
   }
 }
@@ -376,7 +376,7 @@ async function historyAction(delta: 1 | -1): Promise<ActionResult> {
   // 同 navigate：先响应再导航（文档卸载会销毁响应端口）。
   setTimeout(() => { if (delta === -1) history.back(); else history.forward() }, 0)
   return {
-    text: 'Navigating through browser history. Call browser_snapshot again after the page loads.',
+    text: 'Navigating through browser history. Call pageAssets.snapshot again after the page loads.',
     navigationPending: true,
   }
 }
@@ -385,7 +385,7 @@ function reloadAction(): ActionResult {
   resetDeltaState()
   setTimeout(() => { location.reload() }, 0)
   return {
-    text: 'The page is reloading. Call browser_snapshot again after it loads.',
+    text: 'The page is reloading. Call pageAssets.snapshot again after it loads.',
     navigationPending: true,
   }
 }

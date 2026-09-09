@@ -10,19 +10,19 @@ import type { ToolCall, ToolAnswer } from './tools.ts'
 import { wrapUntrustedContent } from '../security/untrusted.ts'
 
 export const API_TOOL_NAMES: ReadonlySet<string> = new Set([
-  'browser_download_media',
-  'browser_list_downloads',
-  'browser_bookmarks_search',
-  'browser_bookmarks_add',
-  'browser_bookmarks_remove',
-  'browser_bookmarks_update',
-  'browser_bookmarks_list',
-  'browser_bookmarks_move',
-  'browser_history',
-  'browser_tab_groups_list',
-  'browser_tab_groups_create',
-  'browser_tab_groups_remove',
-  'browser_page_context',
+  'pageAssets.downloadMedia',
+  'management.downloads.list',
+  'management.bookmarks.search',
+  'management.bookmarks.add',
+  'management.bookmarks.remove',
+  'management.bookmarks.update',
+  'management.bookmarks.list',
+  'management.bookmarks.move',
+  'management.history.search',
+  'management.tabGroups.list',
+  'management.tabGroups.create',
+  'management.tabGroups.remove',
+  'pageAssets.pageContext',
 ])
 
 function unavailableError(message: string): ToolAnswer {
@@ -402,31 +402,31 @@ export async function pageContext(_call: ToolCall, tabId: number): Promise<ToolA
 /** Dispatch API-based tools. */
 export async function dispatchApiTool(call: ToolCall, tabId: number): Promise<ToolAnswer> {
   switch (call.name) {
-    case 'browser_download_media':
+    case 'pageAssets.downloadMedia':
       return downloadMedia(call, tabId)
-    case 'browser_list_downloads':
+    case 'management.downloads.list':
       return listDownloads(call)
-    case 'browser_bookmarks_search':
+    case 'management.bookmarks.search':
       return bookmarksSearch(call)
-    case 'browser_bookmarks_add':
+    case 'management.bookmarks.add':
       return bookmarksAdd(call)
-    case 'browser_bookmarks_remove':
+    case 'management.bookmarks.remove':
       return bookmarksRemove(call)
-    case 'browser_bookmarks_update':
+    case 'management.bookmarks.update':
       return bookmarksUpdate(call)
-    case 'browser_bookmarks_list':
+    case 'management.bookmarks.list':
       return bookmarksList(call)
-    case 'browser_bookmarks_move':
+    case 'management.bookmarks.move':
       return bookmarksMove(call)
-    case 'browser_history':
+    case 'management.history.search':
       return history(call)
-    case 'browser_tab_groups_list':
+    case 'management.tabGroups.list':
       return tabGroupsList()
-    case 'browser_tab_groups_create':
+    case 'management.tabGroups.create':
       return tabGroupsCreate(call)
-    case 'browser_tab_groups_remove':
+    case 'management.tabGroups.remove':
       return tabGroupsRemove(call)
-    case 'browser_page_context':
+    case 'pageAssets.pageContext':
       return pageContext(call, tabId)
     default:
       return unavailableError(`Unknown API tool: ${call.name}`)

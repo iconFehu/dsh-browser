@@ -86,14 +86,14 @@ The paired Playwright / extension duration ratio was **1.24** (95% CI **1.16–1
 
 | Capability | Tool | Notes |
 |---|---|---|
-| Read page | `browser_snapshot` | Structured text snapshot: title, URL, main text, numbered controls, and masked form fields; `delta: true` returns only changes |
-| Click element | `browser_click` | Click links, buttons, checkboxes, and other controls by inventory number |
-| Fill forms | `browser_type` | React/Vue-compatible input; `replace` clears the field first |
-| Press keys | `browser_press` | Keyboard events such as Enter, Tab, Escape, and arrow keys |
-| Scroll | `browser_scroll` | Viewport scrolling: up, down, top, and bottom |
-| Navigate | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it |
-| Read region | `browser_get_text` | Lazy-loaded or partial page text |
-| Wait for stability | `browser_wait` | Page-load and render-settle detection |
+| Read page | `pageAssets.snapshot` | Structured text snapshot: title, URL, main text, numbered controls, and masked form fields; `delta: true` returns only changes |
+| Click element | `management.tabs.click` | Click links, buttons, checkboxes, and other controls by inventory number |
+| Fill forms | `management.tabs.type` | React/Vue-compatible input; `replace` clears the field first |
+| Press keys | `management.tabs.press` | Keyboard events such as Enter, Tab, Escape, and arrow keys |
+| Scroll | `management.tabs.scroll` | Viewport scrolling: up, down, top, and bottom |
+| Navigate | `management.tabs.navigate` / `management.tabs.open` / `management.tabs.back` / `management.tabs.forward` / `management.tabs.reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it |
+| Read region | `pageAssets.getText` | Lazy-loaded or partial page text |
+| Wait for stability | `management.tabs.wait` | Page-load and render-settle detection |
 | Send images | `session.prompt` / `session.attachment` | Host-capability-gated image drafts, image-only prompts, and durable history previews |
 | Quote a selection | side panel composer | Text you highlight in the page appears in the composer and is sent with your next message as fenced, attributed page content |
 
@@ -101,11 +101,11 @@ The paired Playwright / extension duration ratio was **1.24** (95% CI **1.16–1
 
 Mirroring Codex's developer-mode posture, the extension keeps a **browser developer mode** switch in Settings that is **off by default**. When enabled on Chrome, the assistant may attach Chrome DevTools Protocol to the controlled tab purely for **observation** — clicks, typing, scrolling and navigation keep using the regular high-level tools:
 
-- `browser_dom` — deep text read of every frame, including open shadow DOM and sandboxed or uninjectable cross-origin iframes
-- `browser_diagnostics` — console errors/warnings, Log entries, and failed or HTTP 4xx/5xx network requests
-- `browser_network` — recent requests; `includeBodies` also fetches capped response bodies (they can contain tokens or personal data — treat as untrusted)
-- `browser_performance` — Chrome performance counter deltas
-- `browser_screenshot` / `browser_export_pdf` — capture the tab as PNG/PDF and open a save dialog for a local file; the capture never enters the model channel
+- `cdp.dom` — deep text read of every frame, including open shadow DOM and sandboxed or uninjectable cross-origin iframes
+- `cdp.diagnostics` — console errors/warnings, Log entries, and failed or HTTP 4xx/5xx network requests
+- `cdp.network` — recent requests; `includeBodies` also fetches capped response bodies (they can contain tokens or personal data — treat as untrusted)
+- `cdp.performance` — Chrome performance counter deltas
+- `cdp.captureScreenshot` / `cdp.exportPdf` — capture the tab as PNG/PDF and open a save dialog for a local file; the capture never enters the model channel
 
 Attaching pauses your own DevTools for that tab. The debugger detaches when the panel closes, developer mode turns off, or the controlled tab leaves http(s), closes, or is replaced. Firefox does not offer these tools. Page and browser text returned by observation tools is marked as untrusted input.
 
@@ -226,4 +226,4 @@ If you encounter `cache.hydratePrepared is not a function`, update the repositor
 - When work begins, the assistant binds to the active tab (at prompt submission, or at the first direct browser-tool call). If you switch tabs manually, later browser actions pause and the side panel asks whether the assistant should continue on the original tab or follow the new one. Choosing the original tab permits background operation; the extension never silently retargets or changes your visible tab. Closing the controlled tab also pauses tools until you explicitly select the current page.
 - Text you highlight is captured only while a side panel is open and page sharing is not `off`, and never from password or payment-card fields. It stays inside the extension until you send the message, is dropped when you dismiss it or its page navigates or closes, and reaches the model inside the same untrusted-content boundary as page snapshots — including its source title and URL, which the page also controls.
 - Page-authored text is wrapped as untrusted input. The default `auto` mode reads only the controlled tab without an extra prompt; privacy-sensitive users can select `ask` for per-read confirmation or `off` to block reads entirely. In `ask` mode, the read dialog can allow one read or persistently switch back to `auto`; this can be reversed in Settings. Read page text is sent to the selected model.
-- Click, type, keypress, navigation, history, and reload calls fail closed until the user approves them. An origin may be marked as no-confirmation **while chatting** — the entry is stored until you remove it in Settings and simply stops applying while the side panel is closed — or **permanently** (it applies even with the panel closed; managed in Settings). Explicit cross-origin `browser_navigate` calls and unknown history destinations always prompt again.
+- Click, type, keypress, navigation, history, and reload calls fail closed until the user approves them. An origin may be marked as no-confirmation **while chatting** — the entry is stored until you remove it in Settings and simply stops applying while the side panel is closed — or **permanently** (it applies even with the panel closed; managed in Settings). Explicit cross-origin `management.tabs.navigate` calls and unknown history destinations always prompt again.

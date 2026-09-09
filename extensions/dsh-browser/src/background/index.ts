@@ -169,7 +169,7 @@ const pageSessionContexts = new PageSessionContextTracker({
   },
 })
 void chrome.storage.session.remove(LEGACY_RECENT_SESSION_STORAGE_KEY).catch(() => {})
-/** Tool calls that can still be withdrawn by a bridge `tool.cancel` frame. */
+/** Tool calls that can still be withdrawn by a bridge `capability.cancel` frame. */
 const activeToolCalls = new Map<string, AbortController>()
 let lastPersistedAffinity: string | undefined
 let affinityPersistence = Promise.resolve()
@@ -762,7 +762,7 @@ async function resolveToolTab(sessionId?: string): Promise<Pick<chrome.tabs.Tab,
 }
 
 /**
- * Pick a window for browser_open_tab without requiring an already-controlled page.
+ * Pick a window for management.tabs.open without requiring an already-controlled page.
  * Handoff still blocks: the user must finish the keep/follow choice first.
  */
 async function resolveOpenTabWindow(sessionId?: string): Promise<{ windowId: number } | ToolAnswer> {
@@ -858,7 +858,7 @@ async function refreshFollowedPage(sessionId: string, tabId: number): Promise<vo
       ? undefined
       : { maxItems: caps.maxInteractiveItems, maxChars: caps.snapshotMaxChars }
     const answer = await dispatchToolCall(
-      { id: crypto.randomUUID(), name: 'browser_snapshot', args: {} },
+      { id: crypto.randomUUID(), name: 'pageAssets.snapshot', args: {} },
       settings.sharePageContent,
       budget,
       (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, sessionId),
@@ -959,26 +959,26 @@ async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> 
   }
 }
 
-/** Route one tool.call frame to the user-approved controlled tab. */
+/** Route one capability.call frame to the user-approved controlled tab. */
 function routeToolCall(call: ToolCall): void {
   if (bridge === null) return
-  if (call.name === 'browser_tabs_list' || call.name === 'browser_tab_bind') {
+  if (call.name === 'management.tabs.list' || call.name === 'management.tabs.bind') {
     void chrome.tabs.query({}).then((chromeTabs) => {
         const tabs = chromeTabs.map(tabRefFromChrome)
           .filter((tab): tab is BrowserTabRef => tab !== null)
           .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url))
-        if (call.name === 'browser_tab_bind') {
+        if (call.name === 'management.tabs.bind') {
           const ref = typeof call.args.ref === 'string' ? call.args.ref : ''
           const selectedChromeTab = chromeTabs.find(tab => tabRefFromChrome(tab)?.ref === ref)
           const selected = selectedChromeTab === undefined ? null : summarizeTab(selectedChromeTab)
           if (selected === null) throw new Error('The selected browser tab is no longer available')
           tabAffinity.rebindActive(selected, call.sessionId)
           broadcastTabAffinity()
-          return bridge?.send({ t: 'tool.result', id: call.id, ok: true, result: { text: 'Browser tab bound.' } })
+          return bridge?.send({ t: 'capability.result', id: call.id, ok: true, result: { text: 'Browser tab bound.' } })
         }
-        return bridge?.send({ t: 'tool.result', id: call.id, ok: true, result: { text: JSON.stringify(tabs) } })
+        return bridge?.send({ t: 'capability.result', id: call.id, ok: true, result: { text: JSON.stringify(tabs) } })
       })
-      .catch((error: unknown) => bridge?.send({ t: 'tool.result', id: call.id, ok: false,
+      .catch((error: unknown) => bridge?.send({ t: 'capability.result', id: call.id, ok: false,
         error: { code: 'action-failed', message: error instanceof Error ? error.message : String(error) } }))
     return
   }
@@ -991,7 +991,7 @@ function routeToolCall(call: ToolCall): void {
   const budget = caps === null
     ? undefined
     : { maxItems: caps.maxInteractiveItems, maxChars: caps.snapshotMaxChars }
-  void (call.name === 'browser_open_tab'
+  void (call.name === 'management.tabs.open'
     ? resolveOpenTabWindow(call.sessionId).then((target) => 'ok' in target
       ? target
       : dispatchOpenTab(
@@ -1027,12 +1027,12 @@ function routeToolCall(call: ToolCall): void {
             ))
   ).then(
     async (answer) => {
-      // A committed browser_open_tab already rebound affinity; prefer that
+      // A committed management.tabs.open already rebound affinity; prefer that
       // factual success over a generic cancel that would leave the model wrong.
-      if (controller.signal.aborted && !(call.name === 'browser_open_tab' && answer.ok)) {
+      if (controller.signal.aborted && !(call.name === 'management.tabs.open' && answer.ok)) {
         if (activeToolCalls.get(call.id) === controller) {
           bridge?.send({
-            t: 'tool.result',
+            t: 'capability.result',
             id: call.id,
             ok: false,
             error: { code: 'action-failed', message: 'Tool call was cancelled' },
@@ -1044,18 +1044,18 @@ function routeToolCall(call: ToolCall): void {
         if (isNavigationCandidateTool(call.name)) await checkpointSessionPage(call.sessionId)
         const socket = bridge
         if (socket === null) return
-        socket.send({ t: 'tool.result', id: call.id, ok: true, result: answer.result })
+        socket.send({ t: 'capability.result', id: call.id, ok: true, result: answer.result })
       } else {
         const socket = bridge
         if (socket === null) return
-        socket.send({ t: 'tool.result', id: call.id, ok: false, error: answer.error! })
+        socket.send({ t: 'capability.result', id: call.id, ok: false, error: answer.error! })
       }
     },
     (error: unknown) => {
       if (controller.signal.aborted) {
         if (activeToolCalls.get(call.id) === controller) {
           bridge?.send({
-            t: 'tool.result',
+            t: 'capability.result',
             id: call.id,
             ok: false,
             error: { code: 'action-failed', message: 'Tool call was cancelled' },
@@ -1064,7 +1064,7 @@ function routeToolCall(call: ToolCall): void {
         return
       }
       bridge?.send({
-        t: 'tool.result',
+        t: 'capability.result',
         id: call.id,
         ok: false,
         error: { code: 'internal', message: error instanceof Error ? error.message : String(error) },
@@ -1153,8 +1153,11 @@ async function startBridge(): Promise<void> {
           transientEvents.ingest(frame)
           broadcastEvent(frame)
         }
-        else if (frame.t === 'tool.call') routeToolCall(frame)
-        else if (frame.t === 'tool.cancel') cancelToolCall(frame.id)
+        else if (frame.t === 'capability.call') routeToolCall({
+          ...frame,
+          name: `${frame.capability}.${frame.method}`,
+        })
+        else if (frame.t === 'capability.cancel') cancelToolCall(frame.id)
         else if (frame.t === 'respond.result') interactionResponses.route(frame)
         // rpc.result is settled by the rpc facade (wrapped below).
       },

@@ -169,33 +169,34 @@ describe('tool-driven session checkpoints', () => {
 
     const call = async (id: string, name: string): Promise<void> => {
       socket.receive({
-        t: 'tool.call',
+        t: 'capability.call',
         id,
-        name,
-        args: name === 'browser_navigate' ? { url: 'https://example.com/target' } : {},
+        capability: name.split('.')[0],
+        method: name.split('.').slice(1).join('.'),
+        args: name === 'management.tabs.navigate' ? { url: 'https://example.com/target' } : {},
         expiresAt: Date.now() + 10_000,
         sessionId: 'session-live',
       })
       await vi.waitFor(() => {
-        expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'tool.result', id }))
+        expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id }))
       })
     }
 
     action = async (name) => {
-      if (name === 'browser_navigate') {
+      if (name === 'management.tabs.navigate') {
         currentTab = browserTab('https://example.com/failed')
         return { ok: false, error: { code: 'action-failed', message: 'navigation failed' } }
       }
       return { ok: true, result: { text: 'snapshot' } }
     }
-    await call('failed', 'browser_navigate')
+    await call('failed', 'management.tabs.navigate')
     expect(storedUrlKey(sessionData)).toBe('https://example.com/start')
 
     action = async () => {
       currentTab = browserTab('https://example.com/non-navigation')
       return { ok: true, result: { text: 'snapshot' } }
     }
-    await call('snapshot', 'browser_snapshot')
+    await call('snapshot', 'pageAssets.snapshot')
     expect(storedUrlKey(sessionData)).toBe('https://example.com/start')
 
     let finishCancelled!: () => void
@@ -203,19 +204,20 @@ describe('tool-driven session checkpoints', () => {
       finishCancelled = () => resolve({ ok: true, result: { text: 'navigated' } })
     })
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'cancelled',
-      name: 'browser_navigate',
+      capability: 'management',
+      method: 'tabs.navigate',
       args: { url: 'https://example.com/target' },
       expiresAt: Date.now() + 10_000,
       sessionId: 'session-live',
     })
     await vi.waitFor(() => { expect(finishCancelled).toBeTypeOf('function') })
     currentTab = browserTab('https://example.com/cancelled')
-    socket.receive({ t: 'tool.cancel', id: 'cancelled' })
+    socket.receive({ t: 'capability.cancel', id: 'cancelled' })
     finishCancelled()
     await vi.waitFor(() => {
-      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'tool.result', id: 'cancelled', ok: false }))
+      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'cancelled', ok: false }))
     })
     expect(storedUrlKey(sessionData)).toBe('https://example.com/start')
 
@@ -223,7 +225,7 @@ describe('tool-driven session checkpoints', () => {
       currentTab = browserTab('https://example.com/success?step=2#done')
       return { ok: true, result: { text: 'navigated' } }
     }
-    await call('success', 'browser_navigate')
+    await call('success', 'management.tabs.navigate')
     await vi.waitFor(() => { expect(storedUrlKey(sessionData)).toBe('https://example.com/success') })
   })
 })

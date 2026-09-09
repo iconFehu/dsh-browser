@@ -29,20 +29,20 @@ describe('registerBrowserTools', () => {
     for (const dispose of disposers.values()) dispose()
   })
 
-  it('executes browser_click with mapped args', async () => {
+  it('executes management.tabs.click with mapped args', async () => {
     const { ctx, bridge, requestTool, registered } = makeHarness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
-    const tool = registered.find((r) => r.name === 'browser_click')!
+    const tool = registered.find((r) => r.name === 'management.tabs.click')!
     const exec = { signal: new AbortController().signal }
     const result = await (tool.definition.execute as (args: unknown, e: { signal: AbortSignal }) => Promise<unknown>)({ index: 3, frame: 7 }, exec)
-    expect(requestTool).toHaveBeenCalledWith('browser_click', { index: 3, frame: 7 }, exec.signal, 1_000)
+    expect(requestTool).toHaveBeenCalledWith('management.tabs.click', { index: 3, frame: 7 }, exec.signal, 1_000)
     expect(result).toEqual({ text: 'ok' })
   })
 
   it('associates browser calls with the owning Agent session', async () => {
     const { ctx, bridge, requestTool, registered } = makeHarness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
-    const tool = registered.find((r) => r.name === 'browser_click')!
+    const tool = registered.find((r) => r.name === 'management.tabs.click')!
     const exec = {
       signal: new AbortController().signal,
       agent: { id: 'session-browser' },
@@ -51,7 +51,7 @@ describe('registerBrowserTools', () => {
     await (tool.definition.execute as (args: unknown, e: typeof exec) => Promise<unknown>)({ index: 3 }, exec)
 
     expect(requestTool).toHaveBeenCalledWith(
-      'browser_click',
+      'management.tabs.click',
       { index: 3 },
       exec.signal,
       1_000,
@@ -62,14 +62,14 @@ describe('registerBrowserTools', () => {
   it('normalizes snapshot args (delta/region omitted when absent)', async () => {
     const { ctx, bridge, requestTool, registered } = makeHarness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
-    const tool = registered.find((r) => r.name === 'browser_snapshot')!
+    const tool = registered.find((r) => r.name === 'pageAssets.snapshot')!
     const exec = { signal: new AbortController().signal }
     await (tool.definition.execute as (args: unknown, e: { signal: AbortSignal }) => Promise<unknown>)({ delta: true }, exec)
-    expect(requestTool).toHaveBeenLastCalledWith('browser_snapshot', { delta: true }, exec.signal, 1_000)
+    expect(requestTool).toHaveBeenLastCalledWith('pageAssets.snapshot', { delta: true }, exec.signal, 1_000)
     await (tool.definition.execute as (args: unknown, e: { signal: AbortSignal }) => Promise<unknown>)({}, exec)
-    expect(requestTool).toHaveBeenLastCalledWith('browser_snapshot', {}, exec.signal, 1_000)
+    expect(requestTool).toHaveBeenLastCalledWith('pageAssets.snapshot', {}, exec.signal, 1_000)
     await (tool.definition.execute as (args: unknown, e: { signal: AbortSignal }) => Promise<unknown>)({ delta: true, region: 'main' }, exec)
-    expect(requestTool).toHaveBeenLastCalledWith('browser_snapshot', { delta: true, region: 'main' }, exec.signal, 1_000)
+    expect(requestTool).toHaveBeenLastCalledWith('pageAssets.snapshot', { delta: true, region: 'main' }, exec.signal, 1_000)
   })
 
   it('executes every remaining tool with mapped args', async () => {
@@ -81,46 +81,46 @@ describe('registerBrowserTools', () => {
       await (byName.get(name)!.execute as (a: unknown, e: { signal: AbortSignal }) => Promise<unknown>)(args, exec)
     }
 
-    await run('browser_type', { index: 2, text: 'hello' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_type', { index: 2, text: 'hello' }, exec.signal, 1_000)
-    await run('browser_type', { index: 2, text: 'hello', replace: true })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_type', { index: 2, text: 'hello', replace: true }, exec.signal, 1_000)
-    await run('browser_type', { index: 2, frame: 4, text: 'inside frame' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_type', { index: 2, frame: 4, text: 'inside frame' }, exec.signal, 1_000)
+    await run('management.tabs.type', { index: 2, text: 'hello' })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.type', { index: 2, text: 'hello' }, exec.signal, 1_000)
+    await run('management.tabs.type', { index: 2, text: 'hello', replace: true })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.type', { index: 2, text: 'hello', replace: true }, exec.signal, 1_000)
+    await run('management.tabs.type', { index: 2, frame: 4, text: 'inside frame' })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.type', { index: 2, frame: 4, text: 'inside frame' }, exec.signal, 1_000)
 
-    await run('browser_press', { key: 'Enter' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_press', { key: 'Enter' }, exec.signal, 1_000)
+    await run('management.tabs.press', { key: 'Enter' })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.press', { key: 'Enter' }, exec.signal, 1_000)
 
-    await run('browser_scroll', { direction: 'down', amount: 200 })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_scroll', { direction: 'down', amount: 200 }, exec.signal, 1_000)
-    await run('browser_scroll', { direction: 'top' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_scroll', { direction: 'top' }, exec.signal, 1_000)
-    await run('browser_scroll', { direction: 'down', frame: 4 })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_scroll', { direction: 'down', frame: 4 }, exec.signal, 1_000)
+    await run('management.tabs.scroll', { direction: 'down', amount: 200 })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.scroll', { direction: 'down', amount: 200 }, exec.signal, 1_000)
+    await run('management.tabs.scroll', { direction: 'top' })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.scroll', { direction: 'top' }, exec.signal, 1_000)
+    await run('management.tabs.scroll', { direction: 'down', frame: 4 })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.scroll', { direction: 'down', frame: 4 }, exec.signal, 1_000)
 
-    await run('browser_navigate', { url: 'https://example.com' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_navigate', { url: 'https://example.com' }, exec.signal, 1_000)
-    await run('browser_open_tab', { url: 'https://example.com/new' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_open_tab', { url: 'https://example.com/new' }, exec.signal, 1_000)
+    await run('management.tabs.navigate', { url: 'https://example.com' })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.navigate', { url: 'https://example.com' }, exec.signal, 1_000)
+    await run('management.tabs.open', { url: 'https://example.com/new' })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.open', { url: 'https://example.com/new' }, exec.signal, 1_000)
 
-    for (const name of ['browser_back', 'browser_forward', 'browser_reload'] as const) {
+    for (const name of ['management.tabs.back', 'management.tabs.forward', 'management.tabs.reload'] as const) {
       await run(name, {})
       expect(requestTool).toHaveBeenLastCalledWith(name, {}, exec.signal, 1_000)
     }
 
-    await run('browser_get_text', { selector: '#main' })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_get_text', { selector: '#main' }, exec.signal, 1_000)
-    await run('browser_get_text', {})
-    expect(requestTool).toHaveBeenLastCalledWith('browser_get_text', {}, exec.signal, 1_000)
-    await run('browser_get_text', { selector: 'main', frame: 4 })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_get_text', { selector: 'main', frame: 4 }, exec.signal, 1_000)
+    await run('pageAssets.getText', { selector: '#main' })
+    expect(requestTool).toHaveBeenLastCalledWith('pageAssets.getText', { selector: '#main' }, exec.signal, 1_000)
+    await run('pageAssets.getText', {})
+    expect(requestTool).toHaveBeenLastCalledWith('pageAssets.getText', {}, exec.signal, 1_000)
+    await run('pageAssets.getText', { selector: 'main', frame: 4 })
+    expect(requestTool).toHaveBeenLastCalledWith('pageAssets.getText', { selector: 'main', frame: 4 }, exec.signal, 1_000)
 
-    await run('browser_wait', { ms: 100 })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_wait', { ms: 100 }, exec.signal, 1_000)
-    await run('browser_wait', {})
-    expect(requestTool).toHaveBeenLastCalledWith('browser_wait', {}, exec.signal, 1_000)
-    await run('browser_wait', { frame: 4 })
-    expect(requestTool).toHaveBeenLastCalledWith('browser_wait', { frame: 4 }, exec.signal, 1_000)
+    await run('management.tabs.wait', { ms: 100 })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.wait', { ms: 100 }, exec.signal, 1_000)
+    await run('management.tabs.wait', {})
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.wait', {}, exec.signal, 1_000)
+    await run('management.tabs.wait', { frame: 4 })
+    expect(requestTool).toHaveBeenLastCalledWith('management.tabs.wait', { frame: 4 }, exec.signal, 1_000)
   })
 
   it('normalizes every DSH parameter map to JSON Schema before registration', () => {
@@ -131,7 +131,7 @@ describe('registerBrowserTools', () => {
       expect(params.type).toBe('object')
       expect(params.properties).toBeDefined()
     }
-    const click = registered.find(({ name }) => name === 'browser_click')!.definition.parameters as {
+    const click = registered.find(({ name }) => name === 'management.tabs.click')!.definition.parameters as {
       properties: Record<string, unknown>
       required?: string[]
     }
@@ -169,11 +169,11 @@ describe('registerBrowserTools', () => {
     const { ctx, bridge, registered } = makeHarness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 5_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
     const byName = new Map(registered.map((entry) => [entry.name, entry.definition]))
-    for (const name of ['browser_click', 'browser_type', 'browser_press', 'browser_scroll', 'browser_get_text', 'browser_wait']) {
+    for (const name of ['management.tabs.click', 'management.tabs.type', 'management.tabs.press', 'management.tabs.scroll', 'pageAssets.getText', 'management.tabs.wait']) {
       const params = byName.get(name)!.parameters as { properties: { frame?: { type?: unknown } } }
       expect(params.properties.frame?.type).toBe('number')
     }
-    for (const name of ['browser_snapshot', 'browser_navigate', 'browser_open_tab', 'browser_back', 'browser_forward', 'browser_reload']) {
+    for (const name of ['pageAssets.snapshot', 'management.tabs.navigate', 'management.tabs.open', 'management.tabs.back', 'management.tabs.forward', 'management.tabs.reload']) {
       const params = byName.get(name)!.parameters as { properties: { frame?: unknown } }
       expect(params.properties.frame).toBeUndefined()
     }
@@ -183,7 +183,7 @@ describe('registerBrowserTools', () => {
     const { ctx, bridge, requestTool, registered } = makeHarness()
     requestTool.mockResolvedValueOnce(null)
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
-    const tool = registered.find((r) => r.name === 'browser_wait')!
+    const tool = registered.find((r) => r.name === 'management.tabs.wait')!
     const exec = { signal: new AbortController().signal }
     const result = await (tool.definition.execute as (args: unknown, e: { signal: AbortSignal }) => Promise<unknown>)({}, exec)
     expect(result).toEqual({ text: expect.stringContaining('no text') })
@@ -192,7 +192,7 @@ describe('registerBrowserTools', () => {
   it('renders the canonical result as one text block', () => {
     const { ctx, bridge, registered } = makeHarness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1_000, snapshotMaxChars: 12_000, maxInteractiveItems: 60 })
-    const tool = registered.find((r) => r.name === 'browser_click')!
+    const tool = registered.find((r) => r.name === 'management.tabs.click')!
     const output = tool.definition.output as { render: (args: unknown, value: unknown) => unknown }
     expect(output.render({}, { text: 'hello' })).toEqual([{ type: 'text', text: 'hello' }])
   })

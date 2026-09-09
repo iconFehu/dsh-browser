@@ -22,17 +22,22 @@ const activeCalls = new Map<string, AbortController>()
 
 async function sendBrowserAction(tabId: number, action: string, args: Record<string, unknown>): Promise<unknown> {
   try {
-    return await chrome.tabs.sendMessage(tabId, { type: 'browser.action', action, args })
+    const [capability, ...methodParts] = action.split('.')
+    return await chrome.tabs.sendMessage(tabId, { type: 'capability.action', capability, method: methodParts.join('.'), args })
   } catch (firstError) {
     const tab = await chrome.tabs.get(tabId)
     if (!tab.url || !/^https?:\/\//i.test(tab.url)) throw firstError
     await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['content.js'] })
-    return chrome.tabs.sendMessage(tabId, { type: 'browser.action', action, args })
+    const [capability, ...methodParts] = action.split('.')
+    return chrome.tabs.sendMessage(tabId, { type: 'capability.action', capability, method: methodParts.join('.'), args })
   }
 }
 
 async function executeBrowserAction(tabId: number, action: string, args: Record<string, unknown>): Promise<unknown> {
-  const normalized = action.replace(/^browser[._]/, '')
+  const normalized = action
+    .replace(/^management\.tabs\./, '')
+    .replace(/^pageAssets\./, '')
+    .replace(/^browser[._]/, '')
   switch (normalized) {
     case 'navigate':
     case 'open': {
@@ -56,14 +61,14 @@ async function executeBrowserAction(tabId: number, action: string, args: Record<
 
 async function handleNativeEvent(event: unknown): Promise<void> {
   if (!event || typeof event !== 'object') return
-  const frame = event as { t?: string; id?: string; name?: string; args?: Record<string, unknown>; tabId?: number; sessionId?: string }
-  if (frame.t === 'tool.cancel' && typeof frame.id === 'string') {
+  const frame = event as { t?: string; id?: string; capability?: string; method?: string; args?: Record<string, unknown>; tabId?: number; sessionId?: string }
+  if (frame.t === 'capability.cancel' && typeof frame.id === 'string') {
     activeCalls.get(frame.id)?.abort()
     activeCalls.delete(frame.id)
-    native.sendToolResult(frame.id, { ok: false, error: { code: 'cancelled', message: 'Browser tool call was cancelled.' } })
+    native.sendToolResult(frame.id, { ok: false, error: { code: 'cancelled', message: 'Browser capability call was cancelled.' } })
     return
   }
-  if (frame.t !== 'tool.call' || typeof frame.id !== 'string' || typeof frame.name !== 'string') return
+  if (frame.t !== 'capability.call' || typeof frame.id !== 'string' || typeof frame.capability !== 'string' || typeof frame.method !== 'string') return
   const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
   const sessionId = frame.sessionId ?? 'default'
   const tabId = typeof frame.tabId === 'number' ? frame.tabId : sessionTabs.get(sessionId) ?? tabs[0]?.id
@@ -75,9 +80,8 @@ async function handleNativeEvent(event: unknown): Promise<void> {
   const controller = new AbortController()
   activeCalls.set(frame.id, controller)
   try {
-    const capabilityParts = frame.name.match(/^([a-zA-Z][a-zA-Z0-9]*)\.([a-zA-Z][a-zA-Z0-9]*)$/)
-    if (capabilityParts && registry.has(capabilityParts[1]!, capabilityParts[2]!)) {
-      const result = await registry.call(capabilityParts[1]!, capabilityParts[2]!, {
+    if (registry.has(frame.capability, frame.method)) {
+      const result = await registry.call(frame.capability, frame.method, {
         sessionId,
         signal: controller.signal,
         tabId,
@@ -86,7 +90,7 @@ async function handleNativeEvent(event: unknown): Promise<void> {
       native.sendToolResult(frame.id, { ok: true, result })
       return
     }
-    const result = await executeBrowserAction(tabId, frame.name, frame.args ?? {}) as { ok?: boolean; error?: unknown; result?: unknown }
+    const result = await executeBrowserAction(tabId, `${frame.capability}.${frame.method}`, frame.args ?? {}) as { ok?: boolean; error?: unknown; result?: unknown }
     if (controller.signal.aborted) return
     if (result?.ok === false) throw new Error(String(result.error ?? 'Browser action failed'))
     native.sendToolResult(frame.id, { ok: true, result: result?.result ?? result })

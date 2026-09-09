@@ -86,14 +86,14 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 
 | 能力 | 工具 | 说明 |
 |---|---|---|
-| 读取页面 | `browser_snapshot` | 结构化文本快照：标题/URL/正文/编号交互清单/表单字段（敏感值掩码）；`delta: true` 只返回变化 |
-| 点击元素 | `browser_click` | 按编号点击链接/按钮/复选框等 |
-| 填写表单 | `browser_type` | 输入文本（React/Vue 受控组件兼容），`replace` 清空重填 |
-| 按键 | `browser_press` | 键盘事件（Enter/Tab/Escape/方向键…） |
-| 滚动 | `browser_scroll` | 视口滚动（up/down/top/bottom） |
-| 页面导航 | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 受控标签页内导航，或新开标签页并跟随 |
-| 读取区域 | `browser_get_text` | 懒加载内容 / 局部文本 |
-| 等待稳定 | `browser_wait` | 页面加载与渲染稳定检测 |
+| 读取页面 | `pageAssets.snapshot` | 结构化文本快照：标题/URL/正文/编号交互清单/表单字段（敏感值掩码）；`delta: true` 只返回变化 |
+| 点击元素 | `management.tabs.click` | 按编号点击链接/按钮/复选框等 |
+| 填写表单 | `management.tabs.type` | 输入文本（React/Vue 受控组件兼容），`replace` 清空重填 |
+| 按键 | `management.tabs.press` | 键盘事件（Enter/Tab/Escape/方向键…） |
+| 滚动 | `management.tabs.scroll` | 视口滚动（up/down/top/bottom） |
+| 页面导航 | `management.tabs.navigate` / `management.tabs.open` / `management.tabs.back` / `management.tabs.forward` / `management.tabs.reload` | 受控标签页内导航，或新开标签页并跟随 |
+| 读取区域 | `pageAssets.getText` | 懒加载内容 / 局部文本 |
+| 等待稳定 | `management.tabs.wait` | 页面加载与渲染稳定检测 |
 | 发送图片 | `session.prompt` / `session.attachment` | 按宿主能力启用图片草稿、纯图片消息和持久历史预览 |
 | 引用选中内容 | 侧栏输入框 | 在页面里划选的文字会出现在输入框，随下一条消息一起发送，并带上来源与不可信内容边界 |
 
@@ -101,11 +101,11 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 
 对齐 Codex 的开发者模式姿态，扩展在设置中提供**浏览器开发者模式**开关，**默认关闭**。在 Chrome 开启后，助手可以对受控标签页附加 Chrome DevTools Protocol，但**只做观察**——点击、输入、滚动与导航仍走常规高层工具：
 
-- `browser_dom` — 逐帧深层文本读取，含 open shadow DOM 与沙箱/无法注入的跨源 iframe
-- `browser_diagnostics` — console 报错/警告、Log 条目、失败或 HTTP 4xx/5xx 网络请求
-- `browser_network` — 近期请求；`includeBodies` 还会拉取截断的响应体（可能含 token 或个人数据——一律视为不可信）
-- `browser_performance` — Chrome 性能计数器增量
-- `browser_screenshot` / `browser_export_pdf` — 把标签页存为 PNG/PDF 并打开保存对话框落到本地文件；捕获内容绝不进入模型通道
+- `cdp.dom` — 逐帧深层文本读取，含 open shadow DOM 与沙箱/无法注入的跨源 iframe
+- `cdp.diagnostics` — console 报错/警告、Log 条目、失败或 HTTP 4xx/5xx 网络请求
+- `cdp.network` — 近期请求；`includeBodies` 还会拉取截断的响应体（可能含 token 或个人数据——一律视为不可信）
+- `cdp.performance` — Chrome 性能计数器增量
+- `cdp.captureScreenshot` / `cdp.exportPdf` — 把标签页存为 PNG/PDF 并打开保存对话框落到本地文件；捕获内容绝不进入模型通道
 
 附加期间会暂停该标签页你自己的 DevTools。侧栏关闭、开发者模式关闭、受控页离开 http(s)、被关闭或被替换时，调试器立即分离。Firefox 不提供这些工具。观察工具返回的页面/浏览器文本一律标记为不可信输入。
 
@@ -226,4 +226,4 @@ pnpm --filter dsh-browser-extension run test
 - 助手开始工作时会绑定当时的活动标签页（提交提示时绑定；直接调用浏览器工具时则在首次调用绑定）。用户手动切页后，后续浏览器操作会暂停，侧栏会询问让助手继续原页面还是跟随新页面；选择原页面后允许在后台继续，但扩展绝不静默改绑或切换用户正在看的页面。受控标签页关闭后也会暂停，直到用户显式选择当前页。
 - 只有在侧栏打开、且页面共享不是「关闭」时才会捕获划选内容，密码和卡号字段永不读取。内容在发送之前始终留在扩展内部；移除、页面跳转或标签页关闭都会丢弃它；发送时与页面快照一样包在不可信内容边界内，来源标题和 URL 同样由页面提供，因此也放在边界之内。
 - 网页文字会标记为不可信输入。默认「自动共享」只按需读取受控标签页且不额外弹窗；对隐私敏感时可选择「每次询问」，或用「关闭」完全阻断读取。在「每次询问」模式下，读取弹窗可以仅允许一次，也可以持久切回自动读取；之后仍可在设置中关闭。读取的页面文字会发送给当前选择的模型。
-- 点击、输入、按键、导航、历史跳转和刷新默认失败关闭，必须由用户批准。免确认域名分两档：**对话期间免确认**（条目在设置中移除前一直保留，仅在侧栏对话开启时生效，关掉侧栏只是暂时不生效）与**永久免确认**（侧栏关闭也有效，在设置中显式管理）。显式跨域 `browser_navigate` 和未知目标的历史跳转始终重新询问。
+- 点击、输入、按键、导航、历史跳转和刷新默认失败关闭，必须由用户批准。免确认域名分两档：**对话期间免确认**（条目在设置中移除前一直保留，仅在侧栏对话开启时生效，关掉侧栏只是暂时不生效）与**永久免确认**（侧栏关闭也有效，在设置中显式管理）。显式跨域 `management.tabs.navigate` 和未知目标的历史跳转始终重新询问。

@@ -12,7 +12,7 @@ import type { ApprovalPrompt } from '../src/security/approval.ts'
 function action(overrides: Partial<ApprovalPrompt> = {}): ApprovalPrompt {
   return {
     kind: 'action',
-    action: 'browser_click',
+    action: 'management.tabs.click',
     summary: 'click',
     origins: ['https://app.example.com'],
     canTrust: true,
@@ -69,7 +69,7 @@ describe('actionCoveredByTrustedOrigins', () => {
   it('covers stable actions and fully known cross-origin navigation', () => {
     expect(actionCoveredByTrustedOrigins(action(), trusted)).toBe(true)
     expect(actionCoveredByTrustedOrigins(action({
-      action: 'browser_navigate',
+      action: 'management.tabs.navigate',
       origins: ['https://app.example.com', 'https://docs.example.com'],
       canTrust: false,
     }), trusted)).toBe(true)
@@ -77,18 +77,18 @@ describe('actionCoveredByTrustedOrigins', () => {
 
   it('fails closed for history and invalid navigation with unknown destinations', () => {
     expect(actionCoveredByTrustedOrigins(action({
-      action: 'browser_back',
+      action: 'management.tabs.back',
       canTrust: false,
     }), trusted)).toBe(false)
     expect(actionCoveredByTrustedOrigins(action({
-      action: 'browser_navigate',
+      action: 'management.tabs.navigate',
       canTrust: false,
     }), trusted)).toBe(false)
   })
 
   it('requires every known navigation origin to be trusted', () => {
     expect(actionCoveredByTrustedOrigins(action({
-      action: 'browser_navigate',
+      action: 'management.tabs.navigate',
       origins: ['https://app.example.com', 'https://bank.example.net'],
       canTrust: false,
     }), trusted)).toBe(false)
@@ -119,7 +119,7 @@ describe('actionCoveredByTrustedTiers', () => {
   })
 
   it('still fails closed for unknown-destination history actions', () => {
-    const prompt = action({ action: 'browser_back', canTrust: false, origins: [] })
+    const prompt = action({ action: 'management.tabs.back', canTrust: false, origins: [] })
     expect(actionCoveredByTrustedTiers(prompt, true, permanent, chatScoped)).toBe(false)
     expect(actionCoveredByTrustedTiers(prompt, false, permanent, chatScoped)).toBe(false)
   })

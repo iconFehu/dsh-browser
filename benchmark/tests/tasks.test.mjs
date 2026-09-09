@@ -16,15 +16,15 @@ test('state and answer validators reject incorrect results and forbidden tools',
   const instance = makeTaskInstance('notification_toggle', 1, 'state-run', 'http://127.0.0.1:4173')
   const correct = { notificationSaved: true, emailNotifications: true, extra: 'allowed' }
   assert.equal(stateReached(instance, correct), true)
-  assert.equal(validateTask(instance, correct, '', ['browser_snapshot', 'browser_click']).success, true)
+  assert.equal(validateTask(instance, correct, '', ['pageAssets.snapshot', 'management.tabs.click']).success, true)
   assert.equal(validateTask(instance, correct, '', ['exec_command']).success, false)
   assert.equal(validateTask(instance, { notificationSaved: true, emailNotifications: false }, '', []).success, false)
 })
 
 test('answer validators normalize lightweight markdown and whitespace', () => {
   const instance = makeTaskInstance('order_lookup', 2, 'answer-run', 'http://127.0.0.1:4173')
-  assert.equal(validateTask(instance, {}, `**${instance.expected.value}**`, ['browser_snapshot']).success, true)
-  assert.equal(validateTask(instance, {}, '¥0.00', ['browser_snapshot']).success, false)
+  assert.equal(validateTask(instance, {}, `**${instance.expected.value}**`, ['pageAssets.snapshot']).success, true)
+  assert.equal(validateTask(instance, {}, '¥0.00', ['pageAssets.snapshot']).success, false)
 })
 
 test('inventory validation measures the unique filtered product, not a seed suffix', () => {
@@ -34,6 +34,6 @@ test('inventory validation measures the unique filtered product, not a seed suff
 
   assert.equal(instance.expected.value, target.name)
   assert.doesNotMatch(instance.expected.value, /\s1$/u)
-  assert.equal(validateTask(instance, state, `${target.name}（${target.sku}，¥${(target.cents / 100).toFixed(2)}）`, ['browser_snapshot']).success, true)
-  assert.equal(validateTask(instance, state, '其他商品', ['browser_snapshot']).success, false)
+  assert.equal(validateTask(instance, state, `${target.name}（${target.sku}，¥${(target.cents / 100).toFixed(2)}）`, ['pageAssets.snapshot']).success, true)
+  assert.equal(validateTask(instance, state, '其他商品', ['pageAssets.snapshot']).success, false)
 })

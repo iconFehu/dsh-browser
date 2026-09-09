@@ -36,7 +36,7 @@ export function waitForNextDocumentReady(
       if (previousDocumentId !== undefined && sender.documentId === previousDocumentId) return
       // A newly created Firefox tab can run the content script in its initial
       // about:blank document. With no baseline document id, accept only the
-      // HTTP(S) destination document that browser_open_tab can navigate to.
+      // HTTP(S) destination document that management.tabs.open can navigate to.
       if (previousDocumentId === undefined
         && (typeof sender.url !== 'string' || !/^https?:\/\//i.test(sender.url))) return
       finish(true)

@@ -16,16 +16,16 @@ function call(name: string, args: Record<string, unknown> = {}): ToolCall {
 
 describe('approvalPromptForCall', () => {
   it('asks before reading and names every effective frame origin', () => {
-    expect(approvalPromptForCall(call('browser_snapshot'), 'ask', FRAMES, 'zh')).toMatchObject({
+    expect(approvalPromptForCall(call('pageAssets.snapshot'), 'ask', FRAMES, 'zh')).toMatchObject({
       kind: 'read',
       origins: ['https://app.example', 'https://login.example.net'],
       canTrust: false,
     })
-    expect(approvalPromptForCall(call('browser_snapshot'), 'auto', FRAMES, 'zh')).toBeUndefined()
+    expect(approvalPromptForCall(call('pageAssets.snapshot'), 'auto', FRAMES, 'zh')).toBeUndefined()
   })
 
   it('scopes a frame-local action to the frame origin and redacts typed text', () => {
-    const prompt = approvalPromptForCall(call('browser_type', {
+    const prompt = approvalPromptForCall(call('management.tabs.type', {
       frame: 4,
       index: 7,
       text: 'my-password-must-not-appear',
@@ -41,7 +41,7 @@ describe('approvalPromptForCall', () => {
   })
 
   it('never offers persistent trust for cross-origin navigation', () => {
-    const prompt = approvalPromptForCall(call('browser_navigate', {
+    const prompt = approvalPromptForCall(call('management.tabs.navigate', {
       url: 'https://bank.example/transfer?token=secret#confirm',
     }), 'auto', FRAMES, 'zh')
 
@@ -54,7 +54,7 @@ describe('approvalPromptForCall', () => {
   })
 
   it('approves opening a new tab against only the destination origin', () => {
-    const prompt = approvalPromptForCall(call('browser_open_tab', {
+    const prompt = approvalPromptForCall(call('management.tabs.open', {
       url: 'https://docs.example/guide?token=secret#section',
     }), 'auto', FRAMES, 'zh')
 
@@ -67,27 +67,27 @@ describe('approvalPromptForCall', () => {
   })
 
   it('does not offer trust for invalid navigation and keeps key summaries on one bounded line', () => {
-    expect(approvalPromptForCall(call('browser_navigate', { url: 'javascript:alert(1)' }), 'auto', FRAMES, 'zh'))
+    expect(approvalPromptForCall(call('management.tabs.navigate', { url: 'javascript:alert(1)' }), 'auto', FRAMES, 'zh'))
       .toMatchObject({ canTrust: false })
 
-    const prompt = approvalPromptForCall(call('browser_press', { key: `Enter\n${'x'.repeat(100)}` }), 'auto', FRAMES, 'zh')
+    const prompt = approvalPromptForCall(call('management.tabs.press', { key: `Enter\n${'x'.repeat(100)}` }), 'auto', FRAMES, 'zh')
     expect(prompt?.summary).not.toContain('\n')
     expect(prompt?.summary.length).toBeLessThan(70)
   })
 
   it('keeps read-only viewport tools outside the approval path', () => {
-    expect(approvalPromptForCall(call('browser_scroll', { direction: 'down' }), 'auto', FRAMES, 'zh')).toBeUndefined()
-    expect(approvalPromptForCall(call('browser_wait'), 'auto', FRAMES, 'zh')).toBeUndefined()
+    expect(approvalPromptForCall(call('management.tabs.scroll', { direction: 'down' }), 'auto', FRAMES, 'zh')).toBeUndefined()
+    expect(approvalPromptForCall(call('management.tabs.wait'), 'auto', FRAMES, 'zh')).toBeUndefined()
   })
 
   it('renders approval summaries in English for non-Chinese browsers', () => {
-    expect(approvalPromptForCall(call('browser_type', {
+    expect(approvalPromptForCall(call('management.tabs.type', {
       index: 3,
       text: 'secret',
     }), 'auto', FRAMES, 'en')?.summary).toBe(
       'Enter 6 characters in element [3] (the text is not shown in this dialog)',
     )
-    expect(approvalPromptForCall(call('browser_snapshot'), 'ask', FRAMES, 'en')?.summary)
+    expect(approvalPromptForCall(call('pageAssets.snapshot'), 'ask', FRAMES, 'en')?.summary)
       .toBe('Read the current page and accessible iframes')
   })
 })

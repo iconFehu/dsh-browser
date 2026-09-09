@@ -37,20 +37,20 @@ function deps(overrides: Partial<CdpObservationDeps> = {}): CdpObservationDeps {
 describe('dispatchCdpObservation', () => {
   it('refuses on browsers without chrome.debugger', async () => {
     const d = deps({ manager: fakeManager({ available: false }) })
-    const answer = await dispatchCdpObservation(call('browser_diagnostics'), d)
+    const answer = await dispatchCdpObservation(call('cdp.diagnostics'), d)
     expect(answer).toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
   })
 
   it('refuses non-http controlled tabs', async () => {
     const d = deps({ tab: { id: 1, url: 'https://example.com', windowId: 1 }, manager: fakeManager() })
     const d2 = deps({ tab: { id: 1, url: 'chrome://extensions', windowId: 1 } })
-    expect(await dispatchCdpObservation(call('browser_diagnostics'), d2))
+    expect(await dispatchCdpObservation(call('cdp.diagnostics'), d2))
       .toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
     // Attach still must succeed for http: emulate the manager recording attach.
     const recorded: number[] = []
     const attaching = fakeManager()
     ;(attaching as unknown as { attach: (tabId: number) => Promise<void> }).attach = async (tabId: number) => { recorded.push(tabId) }
-    const answer = await dispatchCdpObservation(call('browser_diagnostics'), { ...d, manager: attaching })
+    const answer = await dispatchCdpObservation(call('cdp.diagnostics'), { ...d, manager: attaching })
     expect(recorded).toEqual([1])
     expect(answer).toMatchObject({ ok: true })
   })
@@ -61,17 +61,17 @@ describe('dispatchCdpObservation', () => {
       throw new CdpUnavailableError('unavailable', 'Another debugger is already attached')
     }
     const d = deps({ manager: failing })
-    const answer = await dispatchCdpObservation(call('browser_dom'), d)
+    const answer = await dispatchCdpObservation(call('cdp.dom'), d)
     expect(answer).toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
   })
 
   it('maps denial and unavailable authorization outcomes', async () => {
     const denied = deps({ sharePageContent: 'ask', authorize: () => Promise.resolve('denied' as const) })
-    const deniedAnswer = await dispatchCdpObservation(call('browser_dom'), denied)
+    const deniedAnswer = await dispatchCdpObservation(call('cdp.dom'), denied)
     expect(deniedAnswer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
 
     const unavailable = deps({ sharePageContent: 'ask', authorize: () => Promise.resolve('unavailable' as const) })
-    const unavailableAnswer = await dispatchCdpObservation(call('browser_dom'), unavailable)
+    const unavailableAnswer = await dispatchCdpObservation(call('cdp.dom'), unavailable)
     expect(unavailableAnswer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
   })
 
@@ -88,7 +88,7 @@ describe('dispatchCdpObservation', () => {
       },
     })
     const d = deps({ manager: diagnosticsManager })
-    const answer = await dispatchCdpObservation(call('browser_diagnostics'), d)
+    const answer = await dispatchCdpObservation(call('cdp.diagnostics'), d)
     expect(answer.ok).toBe(true)
     const text = (answer.result as { text: string }).text
     expect(text).toContain('boom')
@@ -106,7 +106,7 @@ describe('dispatchCdpObservation', () => {
       interactive: 3,
       shadowRoots: 1,
     })
-    const answer = await dispatchCdpObservation(call('browser_dom'), deps({ manager: domManager }))
+    const answer = await dispatchCdpObservation(call('cdp.dom'), deps({ manager: domManager }))
     expect(answer.ok).toBe(true)
     const text = (answer.result as { text: string }).text
     expect(text).toContain('visible text inside shadow root')
@@ -130,7 +130,7 @@ describe('dispatchCdpObservation', () => {
       },
     }
     try {
-      const answer = await dispatchCdpObservation(call('browser_screenshot'), d)
+      const answer = await dispatchCdpObservation(call('cdp.captureScreenshot'), d)
       expect(answer.ok).toBe(true)
       expect((answer.result as { text: string }).text).toContain('download id 42')
       expect(savedAs).toBe(true)
@@ -141,12 +141,12 @@ describe('dispatchCdpObservation', () => {
 
   it('covers exactly the routed tool names', () => {
     expect([...CDP_OBSERVATION_TOOLS].sort()).toEqual([
-      'browser_diagnostics',
-      'browser_dom',
-      'browser_export_pdf',
-      'browser_network',
-      'browser_performance',
-      'browser_screenshot',
+      'cdp.captureScreenshot',
+      'cdp.diagnostics',
+      'cdp.dom',
+      'cdp.exportPdf',
+      'cdp.network',
+      'cdp.performance',
     ])
   })
 
@@ -170,7 +170,7 @@ describe('dispatchCdpObservation', () => {
         return Promise.resolve('approved')
       },
     })
-    const answer = await dispatchCdpObservation(call('browser_dom'), d)
+    const answer = await dispatchCdpObservation(call('cdp.dom'), d)
     expect(kinds).toEqual(['read'])
     expect(answer.ok).toBe(true)
   })

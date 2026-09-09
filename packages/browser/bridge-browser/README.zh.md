@@ -6,7 +6,7 @@ Windows Desktop 预构建安装与三种安装方式见[主安装指南](https:/
 
 [English](README.md) | 中文
 
-dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认证的 WebSocket 通道**（`/ext/bridge`），供 Chrome 扩展连接；把扩展调用投影到 dsh 0.1.2 Typert Remotes、按连接跟随 Session 与 Remote Event 流，并注册**纯文本**的 `browser_*` 工具集——经扩展在真实浏览器中读取页面、点击元素、填写表单、滚动与导航，登录态保留。侧边栏是对话入口，工具才是产品本体。
+dsh 的浏览器操作桥在宿主 webserver 上挂载 token 认证的 WebSocket 通道（`/ext/bridge`），并以 capability/method 协议操作用户当前标签页。
 
 **纯文本浏览器工具，多模态对话透传**：页面快照仍是结构化文本（标题、正文、带编号的交互清单、敏感值打码的表单字段），所有浏览器动作按稳定编号寻址。通用 RPC 通道也会透传 dsh 0.1.2 的图片消息和持久附件读取；延迟创建的新会话只在宿主确实挂载附件服务时声明图片限制。
 
@@ -25,7 +25,7 @@ dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认�
 
 ## 使用
 
-bridge 是 dsh 插件：注册进 `web` profile 后，下一次 `dsh web` 启动即挂载 `/ext/bridge` 与 `browser_*` 工具。注册是「每个 DSH home × 每个 profile」一次的动作——profile 已列出该插件时下方安装器会跳过。
+bridge 是 dsh 插件：注册进 `web` profile 后，下一次 `dsh web` 启动即挂载 `/ext/bridge` 与八个能力命名空间。
 
 **CLI 注册（方式 A，标准 web）。** `@yuxianglin/dsh-bridge-browser@0.0.5` 已发布到 npm。有 Node.js 与固定版本 dsh CLI 即可：
 
@@ -80,8 +80,8 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 web
 
 帧为按 `t` 判别的 JSON 对象，定义在 [`protocol.ts`](src/protocol.ts)，是通过 workspace 包的 `./src/*` export 与扩展共享的真源。构建后的包还会发布 `@yuxianglin/dsh-bridge-browser/protocol`，供外部消费方使用。
 
-- 客户端 → 服务端：`hello`（认证+caps）、`rpc`（网关方法透传）、`respond`（按 RPC id 结算宿主交互）、`tool.result`、`pong`。
-- 服务端 → 客户端：`hello.ok`（回显协商后的 caps）、`rpc.result`、`respond.result`（相关联的受理结果或错误）、`event`（由 dsh Remote 流与 waterfall 投影而来的 bridge 内部事件）、`tool.call`、`ping`、`error`。
+- 客户端 → 服务端：`hello`（认证+caps）、`rpc`（网关方法透传）、`respond`（按 RPC id 结算宿主交互）、`capability.result`、`pong`。
+- 服务端 → 客户端：`hello.ok`（回显协商后的 caps）、`rpc.result`、`respond.result`（相关联的受理结果或错误）、`event`（由 dsh Remote 流与 waterfall 投影而来的 bridge 内部事件）、`capability.call`、`ping`、`error`。
 
 每个 `respond` 同时携带全局唯一的传输 id 与宿主交互的 `rpcId`。扩展只把回执路由给发起操作的面板，并在超时、面板关闭或桥断线时拒绝尚未完成的响应。
 
@@ -89,21 +89,21 @@ npx @deepseek-ai/dsh@0.1.2-rc.1 web
 
 | 工具 | 用途 |
 |---|---|
-| `browser_snapshot` | 结构化文本快照（标题/URL/正文/清单/表单）；`delta: true` 只返回变化。 |
-| `browser_click` / `browser_type` / `browser_press` | 按稳定编号操作清单元素。 |
-| `browser_scroll` / `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 页面移动。 |
-| `browser_get_text` / `browser_wait` | 读区域文本 / 稳定检测。 |
-| `browser_dom` | 经完整 CDP 的逐帧深层文本读取（shadow DOM、无法注入的 iframe）；不产编号清单。 |
-| `browser_diagnostics` | 经完整 CDP 的 console/Log/网络失败汇总。 |
-| `browser_network` | 近期请求；`includeBodies` 拉取截断响应体。 |
-| `browser_performance` | Chrome 性能计数器增量。 |
-| `browser_screenshot` / `browser_export_pdf` | 经保存对话框导出本地 PNG/PDF（Chrome 开发者模式）。 |
+| `pageAssets.snapshot` | 结构化文本快照（标题/URL/正文/清单/表单）；`delta: true` 只返回变化。 |
+| `management.tabs.click` / `management.tabs.type` / `management.tabs.press` | 按稳定编号操作清单元素。 |
+| `management.tabs.scroll` / `management.tabs.navigate` / `management.tabs.open` / `management.tabs.back` / `management.tabs.forward` / `management.tabs.reload` | 页面移动。 |
+| `pageAssets.getText` / `management.tabs.wait` | 读区域文本 / 稳定检测。 |
+| `cdp.dom` | 经完整 CDP 的逐帧深层文本读取（shadow DOM、无法注入的 iframe）；不产编号清单。 |
+| `cdp.diagnostics` | 经完整 CDP 的 console/Log/网络失败汇总。 |
+| `cdp.network` | 近期请求；`includeBodies` 拉取截断响应体。 |
+| `cdp.performance` | Chrome 性能计数器增量。 |
+| `cdp.captureScreenshot` / `cdp.exportPdf` | 经保存对话框导出本地 PNG/PDF（Chrome 开发者模式）。 |
 
 最后六个工具需要**浏览器开发者模式（完整 CDP）**——扩展设置里的开关默认关闭且仅 Chrome 可用；关闭或不支持时返回 `feature-unavailable` 而不回退。它们只做观察：点击/输入/按键/滚动/导航仍走上方基于编号清单的工具。
 
 ## 模型体验
 
-- **Token 影响**：一次 `browser_snapshot`（默认 32k 字符）对常见英文文本约为 8–10k token，具体取决于语言和分词器；delta 快照只需零头。系统提示段落引导模型按需快照而非囤积页面文本。
+- **Token 影响**：一次 `pageAssets.snapshot`（默认 32k 字符）对常见英文文本约为 8–10k token，具体取决于语言和分词器；delta 快照只需零头。系统提示段落引导模型按需快照而非囤积页面文本。
 - **KV 缓存影响**：无（快照不做服务端缓存）。
 - **延迟**：每次动作等待扩展在真实页面执行 + 稳定检测（通常 0.2–2s；导航最长 5s）。
 - **失败模式**：`bridge-closed`（扩展未连接）、`timeout`、`no-active-tab`、`content-unavailable`（页面需刷新）、`action-failed`（编号过期——模型应重新快照）。

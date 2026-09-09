@@ -1,5 +1,5 @@
 /**
- * Tool dispatch: executes `tool.call` frames in an explicitly selected tab via
+ * Tool dispatch: executes `capability.call` frames in an explicitly selected tab via
  * the content script and answers with the text-only result.
  *
  * The background service owns tab-affinity policy. Direct callers may omit a
@@ -48,20 +48,20 @@ export interface ContentBudget {
 
 const CONTENT_SCRIPT_FILE = 'content.js'
 const ACTION_DELTA_TOOLS = new Set([
-  'browser_click',
-  'browser_type',
-  'browser_press',
-  'browser_scroll',
-  'browser_wait',
+  'management.tabs.click',
+  'management.tabs.type',
+  'management.tabs.press',
+  'management.tabs.scroll',
+  'management.tabs.wait',
 ])
 const ACTION_DELTA_GUIDANCE = 'The page settled and its current changes are included below. Continue from this state; take another snapshot only when broader page context is needed.'
 const NAVIGATION_CANDIDATE_TOOLS = new Set([
-  'browser_click',
-  'browser_navigate',
-  'browser_back',
-  'browser_forward',
-  'browser_reload',
-  'browser_open_tab',
+  'management.tabs.click',
+  'management.tabs.navigate',
+  'management.tabs.back',
+  'management.tabs.forward',
+  'management.tabs.reload',
+  'management.tabs.open',
 ])
 const NAVIGATION_SNAPSHOT_GUIDANCE = 'Navigation completed and the current page snapshot is included below. Use it directly instead of taking an immediate duplicate snapshot.'
 const pendingInjections = new Map<number, Promise<void>>()
@@ -269,7 +269,7 @@ function frameHeader(frame: TabFrame): string {
 }
 
 function stripDuplicateSnapshotPrompt(status: string): string {
-  return status.replace(/ Call browser_snapshot again after (?:navigation settles|the page loads|it loads)\.$/, '')
+  return status.replace(/ Call pageAssets.snapshot again after (?:navigation settles|the page loads|it loads)\.$/, '')
 }
 
 async function snapshotAfterNavigation(
@@ -287,7 +287,7 @@ async function snapshotAfterNavigation(
   const answer = await snapshotAllFrames(
     tabId,
     frames,
-    { ...call, name: 'browser_snapshot', args: {} },
+    { ...call, name: 'pageAssets.snapshot', args: {} },
     { ...budget, maxChars: snapshotMaxChars },
   )
   const snapshot = answerText(answer)
@@ -306,13 +306,13 @@ async function dispatchOnce(
 ): Promise<ToolAnswer> {
   if (isCancelled(call, signal)) return cancelled()
   if (targetStillAllowed?.() === false) return targetChanged()
-  if (call.name === 'browser_snapshot') return snapshotAllFrames(tabId, frames, call, budget)
+  if (call.name === 'pageAssets.snapshot') return snapshotAllFrames(tabId, frames, call, budget)
 
   const frameId = requestedFrame(call.args)
   if (frameId < 0) return { ok: false, error: { code: 'action-failed', message: 'frame must be a non-negative integer.' } }
   const frame = frames.find((candidate) => candidate.frameId === frameId)
   if (frame === undefined) {
-    return unavailable(`Frame ${frameId} does not exist or has navigated. Call browser_snapshot again.`)
+    return unavailable(`Frame ${frameId} does not exist or has navigated. Call pageAssets.snapshot again.`)
   }
   // No await occurs between this guard and tabs.sendMessage, so an expired
   // approval cannot cross the final state-changing dispatch boundary.
@@ -365,7 +365,7 @@ async function dispatchOnce(
   } else {
     navigationWait?.cancel()
   }
-  if (call.name === 'browser_get_text') {
+  if (call.name === 'pageAssets.getText') {
     return { ok: true, result: { text: wrapUntrustedContent(text, budget.maxChars) } }
   }
   const pageContent = requestPageDelta ? answerPageContent(response) : undefined
@@ -398,12 +398,12 @@ export async function dispatchToolCall(
   targetTab?: Pick<chrome.tabs.Tab, 'id' | 'url'>,
   targetStillAllowed?: () => boolean,
 ): Promise<ToolAnswer> {
-  if (call.name === 'browser_open_tab') {
-    return unavailable('browser_open_tab must be dispatched through the background open-tab path.')
+  if (call.name === 'management.tabs.open') {
+    return unavailable('management.tabs.open must be dispatched through the background open-tab path.')
   }
   if (isCancelled(call, signal)) return cancelled()
   // Privacy boundary: with sharing off, no page content may leave the page.
-  if (sharePageContent === 'off' && (call.name === 'browser_snapshot' || call.name === 'browser_get_text')) {
+  if (sharePageContent === 'off' && (call.name === 'pageAssets.snapshot' || call.name === 'pageAssets.getText')) {
     return { ok: false, error: { code: 'action-failed', message: 'Page content sharing is disabled in Settings > Page content sharing.' } }
   }
   const tab = targetTab ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]
@@ -438,7 +438,7 @@ export async function dispatchToolCall(
     if (refreshedApproval === undefined
       || !sameApprovalBoundary(approval, refreshedApproval)
       || (approval.kind === 'action' && !sameTargetDocument(call, frames, executionFrames))) {
-      return unavailable('The page changed while approval was pending. Call browser_snapshot again before retrying.')
+      return unavailable('The page changed while approval was pending. Call pageAssets.snapshot again before retrying.')
     }
     const refreshedTargetError = validateElementTarget(call, tab.id, executionFrames)
     if (refreshedTargetError !== undefined) return refreshedTargetError
@@ -475,7 +475,7 @@ export async function dispatchToolCall(
         if (refreshedApproval === undefined
           || !sameApprovalBoundary(approval, refreshedApproval)
           || (approval.kind === 'action' && !sameTargetDocument(call, executionFrames, refreshedFrames))) {
-          return unavailable('The page changed while the content script was loading. Call browser_snapshot again before retrying.')
+          return unavailable('The page changed while the content script was loading. Call pageAssets.snapshot again before retrying.')
         }
       }
       return await dispatchOnce(
@@ -494,22 +494,22 @@ export async function dispatchToolCall(
 }
 
 function validateFrameTarget(call: ToolCall, frames: TabFrame[]): ToolAnswer | undefined {
-  if (call.name === 'browser_snapshot') return undefined
+  if (call.name === 'pageAssets.snapshot') return undefined
   const frameId = requestedFrame(call.args)
   if (frameId < 0) return { ok: false, error: { code: 'action-failed', message: 'frame must be a non-negative integer.' } }
   if (!frames.some((frame) => frame.frameId === frameId)) {
-    return unavailable(`Frame ${frameId} does not exist or has navigated. Call browser_snapshot again.`)
+    return unavailable(`Frame ${frameId} does not exist or has navigated. Call pageAssets.snapshot again.`)
   }
   return undefined
 }
 
 function validateElementTarget(call: ToolCall, tabId: number, frames: TabFrame[]): ToolAnswer | undefined {
-  if (call.name !== 'browser_click' && call.name !== 'browser_type') return undefined
+  if (call.name !== 'management.tabs.click' && call.name !== 'management.tabs.type') return undefined
   const frameId = requestedFrame(call.args)
   const frame = frames.find((candidate) => candidate.frameId === frameId)
   const snapshotted = snapshotDocumentsByTab.get(tabId)?.get(frameId)
   if (frame === undefined || snapshotted === undefined || snapshotted !== frameDocumentKey(frame)) {
-    return unavailable('The element reference does not belong to the current document. Call browser_snapshot again for current frame and index values.')
+    return unavailable('The element reference does not belong to the current document. Call pageAssets.snapshot again for current frame and index values.')
   }
   return undefined
 }
@@ -642,7 +642,7 @@ export async function dispatchOpenTab(
       result: {
         text: sharePageContent === 'off'
           ? `${status} Page content sharing is disabled, so no snapshot was captured.`
-          : `${status} Call browser_snapshot again after the page loads.`,
+          : `${status} Call pageAssets.snapshot again after the page loads.`,
       },
     }
   }
@@ -661,6 +661,6 @@ export async function dispatchOpenTab(
   }
   return {
     ok: true,
-    result: { text: `${status} Call browser_snapshot again after the page loads.` },
+    result: { text: `${status} Call pageAssets.snapshot again after the page loads.` },
   }
 }

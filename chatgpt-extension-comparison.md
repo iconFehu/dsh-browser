@@ -71,44 +71,44 @@ Provides Playwright-like API with:
 
 ### DSH Browser Extension
 Provides browser control via DSH tools:
-- `browser_snapshot` - Read page content with numbered controls
-- `browser_click` - Click elements by inventory number
-- `browser_type` - Fill forms with React/Vue compatibility
-- `browser_press` - Keyboard events
-- `browser_scroll` - Viewport scrolling
-- `browser_navigate` - Navigation
-- `browser_open_tab` - Open new tabs
-- `browser_back` / `browser_forward` - History navigation
-- `browser_reload` - Reload pages
-- `browser_get_text` - Read specific regions
-- `browser_wait` - Wait for stability
-- Optional CDP tools (off by default): `browser_dom`, `browser_diagnostics`, `browser_network`, `browser_performance`, `browser_screenshot`, `browser_export_pdf`
-- `browser_download_media` - Download media from page
-- `browser_list_downloads` - List recent downloads
-- `browser_bookmarks_search` - Search bookmarks
-- `browser_bookmarks_add` - Add bookmark
-- `browser_bookmarks_remove` - Remove bookmark
-- `browser_bookmarks_update` - Update bookmark
-- `browser_bookmarks_list` - List bookmarks
-- `browser_bookmarks_move` - Move bookmark
-- `browser_history` - Read/search browser history
-- `browser_tab_groups_list` - List tab groups
-- `browser_tab_groups_create` - Create tab group
-- `browser_tab_groups_remove` - Remove tab group
-- `browser_page_context` - Get semantic page context
-- `browser_download_media` - Download media from page
-- `browser_list_downloads` - List recent downloads
-- `browser_bookmarks_search` - Search bookmarks
-- `browser_bookmarks_add` - Add bookmark
-- `browser_bookmarks_remove` - Remove bookmark
-- `browser_bookmarks_update` - Update bookmark
-- `browser_bookmarks_list` - List bookmarks
-- `browser_bookmarks_move` - Move bookmark
-- `browser_history` - Read/search browser history
-- `browser_tab_groups_list` - List tab groups
-- `browser_tab_groups_create` - Create tab group
-- `browser_tab_groups_remove` - Remove tab group
-- `browser_page_context` - Get semantic page context
+- `pageAssets.snapshot` - Read page content with numbered controls
+- `management.tabs.click` - Click elements by inventory number
+- `management.tabs.type` - Fill forms with React/Vue compatibility
+- `management.tabs.press` - Keyboard events
+- `management.tabs.scroll` - Viewport scrolling
+- `management.tabs.navigate` - Navigation
+- `management.tabs.open` - Open new tabs
+- `management.tabs.back` / `management.tabs.forward` - History navigation
+- `management.tabs.reload` - Reload pages
+- `pageAssets.getText` - Read specific regions
+- `management.tabs.wait` - Wait for stability
+- Optional CDP tools (off by default): `cdp.dom`, `cdp.diagnostics`, `cdp.network`, `cdp.performance`, `cdp.captureScreenshot`, `cdp.exportPdf`
+- `pageAssets.downloadMedia` - Download media from page
+- `management.downloads.list` - List recent downloads
+- `management.bookmarks.search` - Search bookmarks
+- `management.bookmarks.add` - Add bookmark
+- `management.bookmarks.remove` - Remove bookmark
+- `management.bookmarks.update` - Update bookmark
+- `management.bookmarks.list` - List bookmarks
+- `management.bookmarks.move` - Move bookmark
+- `management.history.search` - Read/search browser history
+- `management.tabGroups.list` - List tab groups
+- `management.tabGroups.create` - Create tab group
+- `management.tabGroups.remove` - Remove tab group
+- `pageAssets.pageContext` - Get semantic page context
+- `pageAssets.downloadMedia` - Download media from page
+- `management.downloads.list` - List recent downloads
+- `management.bookmarks.search` - Search bookmarks
+- `management.bookmarks.add` - Add bookmark
+- `management.bookmarks.remove` - Remove bookmark
+- `management.bookmarks.update` - Update bookmark
+- `management.bookmarks.list` - List bookmarks
+- `management.bookmarks.move` - Move bookmark
+- `management.history.search` - Read/search browser history
+- `management.tabGroups.list` - List tab groups
+- `management.tabGroups.create` - Create tab group
+- `management.tabGroups.remove` - Remove tab group
+- `pageAssets.pageContext` - Get semantic page context
 
 ## Content Security Policy
 

@@ -12,15 +12,15 @@ The **browser-operation end** of dsh: the model reads and operates the browser p
 
 | Capability | Action | Notes |
 |---|---|---|
-| Read page | `browser_snapshot` | Title/URL/main text/numbered inventory/form fields (sensitive values masked); `delta: true` returns only changes |
-| Click element | `browser_click` | Click by inventory number (links/buttons/checkboxes…), React/Vue compatible |
-| Fill forms | `browser_type` | Type text; `replace` clears first |
-| Keys | `browser_press` | Enter/Tab/Escape/arrows etc. |
-| Scroll | `browser_scroll` | Viewport scrolling (up/down/top/bottom) |
-| Navigate | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it |
-| Read region | `browser_get_text` | Lazy-loaded content / partial text |
-| Wait | `browser_wait` | Page load and render-settle detection |
-| Observe (developer mode) | `browser_dom` / `browser_diagnostics` / `browser_network` / `browser_performance` / `browser_screenshot` / `browser_export_pdf` | Full-CDP observation behind the **browser developer mode** switch (off by default, Chrome): deep shadow/frame text reads, console/Log/network diagnostics (incl. capped response bodies on request), performance deltas, and local PNG/PDF export via a save dialog |
+| Read page | `pageAssets.snapshot` | Title/URL/main text/numbered inventory/form fields (sensitive values masked); `delta: true` returns only changes |
+| Click element | `management.tabs.click` | Click by inventory number (links/buttons/checkboxes…), React/Vue compatible |
+| Fill forms | `management.tabs.type` | Type text; `replace` clears first |
+| Keys | `management.tabs.press` | Enter/Tab/Escape/arrows etc. |
+| Scroll | `management.tabs.scroll` | Viewport scrolling (up/down/top/bottom) |
+| Navigate | `management.tabs.navigate` / `management.tabs.open` / `management.tabs.back` / `management.tabs.forward` / `management.tabs.reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it |
+| Read region | `pageAssets.getText` | Lazy-loaded content / partial text |
+| Wait | `management.tabs.wait` | Page load and render-settle detection |
+| Observe (developer mode) | `cdp.dom` / `cdp.diagnostics` / `cdp.network` / `cdp.performance` / `cdp.captureScreenshot` / `cdp.exportPdf` | Full-CDP observation behind the **browser developer mode** switch (off by default, Chrome): deep shadow/frame text reads, console/Log/network diagnostics (incl. capped response bodies on request), performance deltas, and local PNG/PDF export via a save dialog |
 | Chat with images | `session.prompt` / `session.attachment` | Host-gated image selection, image-only sends, and durable history previews |
 | Quote what you highlight | side panel composer | The text you select in the page becomes a quote in the composer and rides along with your next message |
 
@@ -96,7 +96,7 @@ For extension-only development, load `extensions/dsh-browser/dist/` from `chrome
 - **Snapshot as the view**: the model's entire view of the page is structured text (title/URL/main/numbered elements/forms), budgeted at 32k chars by default (plugin-configurable, negotiated to the extension via `hello.ok`).
 - **Page text is untrusted input**: snapshots and targeted text reads are enclosed in a fresh nonce-bound trust marker and explicitly tell the model never to treat page-authored commands as instructions. This is defense in depth; extension-side action approval is the enforcement boundary.
 - **Stable numbering**: element numbers persist across snapshots (WeakMap + `data-dsh-el`), so the model can say "click 7"; a large page change explicitly reports "numbers reindexed".
-- **Delta mode**: `browser_snapshot({delta:true})` returns only changed element numbers, saving tokens.
+- **Delta mode**: `pageAssets.snapshot({delta:true})` returns only changed element numbers, saving tokens.
 - **Privacy**: password/credit-card values always render as `••••` and never leave the page; accessible names never use a sensitive field's current value.
 - **Tab affinity**: prompt submission binds the active tab before the model starts working; a direct browser-tool call also performs the initial bind when needed. A manual tab/window switch pauses later tools and asks whether the assistant should stay on the original tab or follow the newly visible one. Staying permits explicit background operation without changing the user's visible tab; following resets page-reference state. A closed controlled tab fails closed until the user selects the current page, and a switch withdraws any open action approval.
 - **Proportional approval**: the default `auto` mode lets the model read the controlled tab without an extra prompt; `ask` restores per-read confirmation and `off` blocks reads. In `ask` mode, the read dialog can allow one read or persistently switch back to `auto`, which remains reversible in Settings. State-changing tools still fail closed and show their exact origin plus a redacted action summary. The user may deny, allow once, or mark one origin as no-confirmation **while chatting** — the entry is stored until removed in Settings and applies only while a side panel is open — while **permanently allowed domains** (effective even with the panel closed) are managed explicitly in Settings. If the panel is closed, an approval remains pending for up to 60 seconds and, when enabled, a system notification opens the panel for review. The panel restores the requesting session before showing a session-scoped approval. Caller cancellation or bridge timeout withdraws any open approval before an action can run.
@@ -106,11 +106,11 @@ For extension-only development, load `extensions/dsh-browser/dist/` from `chrome
 
 Mirroring Codex's developer mode, a **Settings toggle (off by default)** gates the Chrome-only `debugger` permission usage. When on and a side panel conversation is open, the background attaches CDP to the controlled tab **for observation only** — all actions still run through the content-script pipeline:
 
-- `browser_dom` reads every frame's text, including open shadow DOM and sandboxed/uninjectable cross-origin iframes (no inventory; `browser_snapshot` remains the action source).
-- `browser_diagnostics` reports console errors/warnings, Log entries, and failed or HTTP 4xx/5xx requests.
-- `browser_network` lists recent requests (redacted URLs); `includeBodies: true` fetches capped response bodies with an explicit sensitive-data warning.
-- `browser_performance` returns Chrome counter deltas.
-- `browser_screenshot` and `browser_export_pdf` capture the tab (PNG/PDF) and open a **save dialog** for a local file; captures never enter the model channel.
+- `cdp.dom` reads every frame's text, including open shadow DOM and sandboxed/uninjectable cross-origin iframes (no inventory; `pageAssets.snapshot` remains the action source).
+- `cdp.diagnostics` reports console errors/warnings, Log entries, and failed or HTTP 4xx/5xx requests.
+- `cdp.network` lists recent requests (redacted URLs); `includeBodies: true` fetches capped response bodies with an explicit sensitive-data warning.
+- `cdp.performance` returns Chrome counter deltas.
+- `cdp.captureScreenshot` and `cdp.exportPdf` capture the tab (PNG/PDF) and open a **save dialog** for a local file; captures never enter the model channel.
 
 These tools share the read-sharing policy (`auto`/`ask`/`off`), wrap all page/browser text as untrusted, and answer `feature-unavailable` (never a silent fallback) when disabled, unsupported (Firefox), or when the tab is not a normal http(s) page. Attaching pauses your own DevTools for that tab; the session is detached when the panel closes, the switch turns off, or the controlled tab closes, is replaced, or navigates off http(s).
 
@@ -125,5 +125,5 @@ Chrome uses `sidePanel`; Firefox uses `sidebar_action`. Both request `storage` (
 - Accessible cross-origin iframes are snapshotted and operated with stable `(frame, index)` addresses. Restricted or short-lived frames are reported as unavailable without failing the whole page snapshot.
 - Captcha/image-only controls cannot be handled — the tool result reports "elements with no accessible name" and asks the user to complete that step manually.
 - No automatic token rotation.
-- Synthetic `browser_press` events do not trigger browser-native default actions such as Tab focus movement, arrow-key scrolling, or Enter activation; use manual input when a workflow depends on those defaults.
-- `browser_wait` considers page load plus a fixed quiet window, but does not observe continuously changing DOM state; a live-updating SPA may be reported as stable.
+- Synthetic `management.tabs.press` events do not trigger browser-native default actions such as Tab focus movement, arrow-key scrolling, or Enter activation; use manual input when a workflow depends on those defaults.
+- `management.tabs.wait` considers page load plus a fixed quiet window, but does not observe continuously changing DOM state; a live-updating SPA may be reported as stable.

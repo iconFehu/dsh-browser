@@ -22,12 +22,12 @@ import type { ApprovalAuthorization, ApprovalPrompt } from '../../security/appro
 
 /** Tool names routed to the CDP observation layer instead of the content pipeline. */
 export const CDP_OBSERVATION_TOOLS: ReadonlySet<string> = new Set([
-  'browser_diagnostics',
-  'browser_network',
-  'browser_performance',
-  'browser_dom',
-  'browser_screenshot',
-  'browser_export_pdf',
+  'cdp.diagnostics',
+  'cdp.network',
+  'cdp.performance',
+  'cdp.dom',
+  'cdp.captureScreenshot',
+  'cdp.exportPdf',
 ])
 
 export interface CdpObservationDeps {
@@ -143,11 +143,11 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
 
   try {
     switch (call.name) {
-      case 'browser_diagnostics': {
+      case 'cdp.diagnostics': {
         const text = renderDiagnostics(deps.manager.diagnostics.snapshot())
         return { ok: true, result: { text: wrapUntrustedContent(text, OBSERVATION_TEXT_MAX) } }
       }
-      case 'browser_network': {
+      case 'cdp.network': {
         const args = call.args as { includeBodies?: boolean; limit?: number }
         const limit = typeof args.limit === 'number' && Number.isInteger(args.limit)
           ? Math.min(60, Math.max(1, args.limit))
@@ -173,16 +173,16 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
         }
         return { ok: true, result: { text: wrapUntrustedContent(text, OBSERVATION_TEXT_MAX) } }
       }
-      case 'browser_performance': {
+      case 'cdp.performance': {
         const deltas = await deps.manager.performanceDelta()
         return { ok: true, result: { text: renderMetrics(deltas) } }
       }
-      case 'browser_dom': {
+      case 'cdp.dom': {
         const text = await readDomDeep(deps.manager)
         return { ok: true, result: { text: wrapUntrustedContent(text, OBSERVATION_TEXT_MAX) } }
       }
-      case 'browser_screenshot':
-      case 'browser_export_pdf': {
+      case 'cdp.captureScreenshot':
+      case 'cdp.exportPdf': {
         return await exportCapture(deps, call.name)
       }
       default:
@@ -202,12 +202,12 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
  * inspect or share; the model only receives a confirmation text, keeping the
  * tool channel text-only.
  */
-async function exportCapture(deps: CdpObservationDeps, tool: 'browser_screenshot' | 'browser_export_pdf'): Promise<ToolAnswer> {
+async function exportCapture(deps: CdpObservationDeps, tool: 'cdp.captureScreenshot' | 'cdp.exportPdf'): Promise<ToolAnswer> {
   const downloads = (globalThis as { chrome?: { downloads?: unknown } }).chrome?.downloads
   if (downloads === undefined || typeof downloads !== 'object' || typeof (downloads as { download?: unknown }).download !== 'function') {
     return unavailableError('feature-unavailable', 'Saving files is not available in this browser; exports require the downloads permission.')
   }
-  const isPdf = tool === 'browser_export_pdf'
+  const isPdf = tool === 'cdp.exportPdf'
   const method = isPdf ? 'Page.printToPDF' : 'Page.captureScreenshot'
   const params = isPdf
     ? { printBackground: true, preferCSSPageSize: true }
@@ -261,7 +261,7 @@ async function readDomDeep(manager: CdpManager): Promise<string> {
     const interactive = typeof model.interactive === 'number' ? model.interactive : 0
     const title = typeof model.title === 'string' && model.title !== '' ? `${model.title}\n` : ''
     const pageText = typeof model.text === 'string' ? model.text : ''
-    const body = `${header}\n${title}${clipText(pageText, Math.min(budget, 12_000))}\n[shadow roots: ${shadow}; interactive elements: ${interactive} — use browser_snapshot for numbered action targets]`
+    const body = `${header}\n${title}${clipText(pageText, Math.min(budget, 12_000))}\n[shadow roots: ${shadow}; interactive elements: ${interactive} — use pageAssets.snapshot for numbered action targets]`
     sections.push(body)
     budget -= body.length
     frameNumber += 1

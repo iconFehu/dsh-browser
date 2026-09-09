@@ -32,7 +32,7 @@ describe('HostDispatcher', () => {
     selected.toolResult = async (result) => { sent.push(result.id) }
     const other = { ...backend(), kind: 'codex' as const }
     const dispatcher = new HostDispatcher({ extensionId: 'test-extension', backend: 'dsh', router: new BackendRouter([other, selected]) })
-    await dispatcher.handle({ type: 'tool.result', id: 'call-1', ok: true, result: { text: 'done' } })
+    await dispatcher.handle({ type: 'capability.result', id: 'call-1', ok: true, result: { text: 'done' } })
     expect(sent).toEqual(['call-1'])
   })
 

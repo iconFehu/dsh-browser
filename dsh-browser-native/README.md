@@ -27,7 +27,7 @@ Native Host ── BackendRouter ── Codex App Server
 - `webmcp`：读取并调用页面 WebMCP 工具
 - `botDetection`：向后端报告受支持的挑战原因
 
-页面动作兼容 `browser_snapshot`、`browser_click`、`browser_type`、`browser_press_key`、`browser_scroll`、`browser_wait`、`browser_navigate`、`browser_back`、`browser_forward` 和 `browser_reload` 等常用名称。
+页面动作通过 `capability.action` 传递，并使用 `pageAssets.snapshot`、`management.tabs.click` 等 capability 与 method 组合。
 
 ## 开发
 

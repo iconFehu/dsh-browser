@@ -1,6 +1,6 @@
 /**
  * `@yuxianglin/dsh-bridge-browser`: token-authenticated WebSocket bridge for
- * the browser extension plus the text-only `browser_*` tool set.
+ * the browser extension plus the capability/method browser surface.
  *
  * The bridge mounts its own upgrade route (`/ext/bridge`) on the host
  * webserver, OUTSIDE the /api trust fence — so it brings its own bearer-token
@@ -8,7 +8,7 @@
  * calls, Session streams, and Host waterfalls use dsh 0.1.2's Typert Gateway
  * and Connection services.
  * Tools execute by dispatching
- * `tool.call` frames to the connected extension, which performs the action in
+ * `capability.call` frames to the connected extension, which performs the action in
  * the tab explicitly controlled by the user.
  *
  * Opt-in by design: nothing is registered unless this plugin appears in the
@@ -230,7 +230,7 @@ function mountBridge(
     path: '/ext/browser-tabs',
     handler: async (_req, res) => {
       try {
-        const result = await server.requestTool('browser_tabs_list', {}, new AbortController().signal, resolved.toolTimeoutMs)
+        const result = await server.requestTool('management.tabs.list', {}, new AbortController().signal, resolved.toolTimeoutMs)
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
         res.end(typeof result === 'object' && result !== null && typeof (result as { text?: unknown }).text === 'string'
           ? (result as { text: string }).text : JSON.stringify(result))
@@ -258,9 +258,9 @@ function mountBridge(
     ctx.effect(() => systemPrompt.section({
       name: 'tool:bridge-browser',
       order: 107,
-      text: 'A browser bridge may be connected. To read or operate the user\'s active browser page, call browser_snapshot '
+      text: 'A browser bridge may be connected. To read or operate the user\'s active browser page, call pageAssets.snapshot '
         + '(text-only; numbered items are the click/type targets), unless the current turn already includes a plugin-provided '
-        + 'followed-page browser_snapshot. Reuse that injected snapshot and its indices directly. Never assume page content you have not snapshotted.',
+        + 'followed-page pageAssets.snapshot. Reuse that injected snapshot and its indices directly. Never assume page content you have not snapshotted.',
     }), 'bridge-browser: system prompt section')
   }
 

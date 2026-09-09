@@ -1,4 +1,4 @@
-import { capabilityById, type CapabilityId } from './capabilities.js'
+import { CAPABILITIES, capabilityById, type CapabilityDescriptor, type CapabilityId } from './capabilities.js'
 
 export interface CapabilityCallContext {
   readonly sessionId: string
@@ -8,15 +8,34 @@ export interface CapabilityCallContext {
 
 export type CapabilityHandler = (context: CapabilityCallContext, method: string, args: unknown) => Promise<unknown>
 
+export interface MethodDefinition {
+  readonly description: string
+  readonly parameters: Record<string, unknown>
+  readonly readOnly: boolean
+  readonly requiresApproval: boolean
+  readonly invoke: CapabilityHandler
+}
+
 export class CapabilityRegistry {
   private readonly handlers = new Map<CapabilityId, Map<string, CapabilityHandler>>()
 
-  register(capability: CapabilityId, method: string, handler: CapabilityHandler): void {
+  register(capability: CapabilityId, method: string, handler: CapabilityHandler, metadata?: Omit<MethodDefinition, 'invoke'>): void {
     if (!capabilityById(capability)) throw new Error(`Unknown capability: ${capability}`)
     const methods = this.handlers.get(capability) ?? new Map<string, CapabilityHandler>()
     if (methods.has(method)) throw new Error(`Duplicate capability method: ${capability}.${method}`)
     methods.set(method, handler)
     this.handlers.set(capability, methods)
+  }
+
+  listCapabilities(options: { includeInternal?: boolean } = {}): readonly CapabilityDescriptor[] {
+    return CAPABILITIES.filter((item) => options.includeInternal || !item.internalOnly)
+      .filter((item) => this.handlers.has(item.id))
+  }
+
+  getDocumentation(capability: string): { id: CapabilityId; description: string; methods: string[] } | undefined {
+    const descriptor = capabilityById(capability)
+    if (!descriptor) return undefined
+    return { id: descriptor.id, description: descriptor.description, methods: [...(this.handlers.get(descriptor.id)?.keys() ?? [])] }
   }
 
   has(capability: string, method: string): boolean {

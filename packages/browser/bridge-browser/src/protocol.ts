@@ -92,8 +92,8 @@ export type ClientFrame =
   /** Answer or cancel a pending Host interaction waterfall. */
   | { t: 'respond'; id: string; rpcId: string; result: RespondResult }
   /** Result of a previously dispatched tool call. */
-  | { t: 'tool.result'; id: string; ok: true; result: unknown }
-  | { t: 'tool.result'; id: string; ok: false; error: ToolError }
+  | { t: 'capability.result'; id: string; ok: true; result: unknown }
+  | { t: 'capability.result'; id: string; ok: false; error: ToolError }
   /** Liveness reply. */
   | { t: 'pong' }
 
@@ -110,9 +110,9 @@ export type ServerFrame =
   /** One bridge-owned event envelope projected from Remote streams and waterfalls. */
   | { t: 'event'; frame: { rpcId: string; method: string; payload: unknown } }
   /** A model-requested browser action to execute in the user-controlled tab. */
-  | { t: 'tool.call'; id: string; name: string; args: Record<string, unknown>; expiresAt: number; sessionId?: string }
+  | { t: 'capability.call'; id: string; capability: string; method: string; args: Record<string, unknown>; expiresAt: number; sessionId?: string }
   /** Withdraw a tool call that timed out or whose caller was cancelled. */
-  | { t: 'tool.cancel'; id: string }
+  | { t: 'capability.cancel'; id: string }
   /** Liveness probe. */
   | { t: 'ping' }
   /** Fatal connection error; the client should re-authenticate. */
@@ -123,7 +123,7 @@ export type BridgeFrame = ClientFrame | ServerFrame
 
 /**
  * Type guard: is this frame one the SERVER may send? Client-only shapes
- * (hello/tool.result/pong) narrow out, so server-side consumers never
+ * (hello/capability.result/pong) narrow out, so server-side consumers never
  * dispatch on their own request vocabulary.
  * @param frame - parsed frame.
  * @returns true for server-sendable frames.
@@ -133,8 +133,8 @@ export function isServerFrame(frame: BridgeFrame): frame is ServerFrame {
     || frame.t === 'rpc.result'
     || frame.t === 'respond.result'
     || frame.t === 'event'
-    || frame.t === 'tool.call'
-    || frame.t === 'tool.cancel'
+    || frame.t === 'capability.call'
+    || frame.t === 'capability.cancel'
     || frame.t === 'ping'
     || frame.t === 'error'
 }
@@ -146,7 +146,7 @@ export function isServerFrame(frame: BridgeFrame): frame is ServerFrame {
  * @returns true for client-sendable frames.
  */
 export function isClientFrame(frame: BridgeFrame): frame is ClientFrame {
-  return frame.t === 'hello' || frame.t === 'rpc' || frame.t === 'respond' || frame.t === 'tool.result' || frame.t === 'pong'
+  return frame.t === 'hello' || frame.t === 'rpc' || frame.t === 'respond' || frame.t === 'capability.result' || frame.t === 'pong'
 }
 
 /**
@@ -178,13 +178,13 @@ export function parseBridgeFrame(text: string): BridgeFrame | undefined {
       return typeof frame.id === 'string' && typeof frame.rpcId === 'string' && isRespondResult(frame.result)
         ? { t: 'respond', id: frame.id, rpcId: frame.rpcId, result: frame.result }
         : undefined
-    case 'tool.result':
+    case 'capability.result':
       if (typeof frame.id !== 'string') return undefined
       if (frame.ok === true && 'result' in frame) {
-        return { t: 'tool.result', id: frame.id, ok: true, result: frame.result }
+        return { t: 'capability.result', id: frame.id, ok: true, result: frame.result }
       }
       return isToolError(frame.error)
-        ? { t: 'tool.result', id: frame.id, ok: false, error: frame.error }
+        ? { t: 'capability.result', id: frame.id, ok: false, error: frame.error }
         : undefined
     case 'pong':
       return { t: 'pong' }
@@ -212,23 +212,24 @@ export function parseBridgeFrame(text: string): BridgeFrame | undefined {
       return typeof frame.frame === 'object' && frame.frame !== null
         ? { t: 'event', frame: frame.frame as ServerFrame extends { t: 'event' } ? ServerFrame['frame'] : never }
         : undefined
-    case 'tool.call':
+    case 'capability.call':
       if (frame.sessionId !== undefined
         && (typeof frame.sessionId !== 'string' || frame.sessionId.trim() === '')) return undefined
-      return typeof frame.id === 'string' && typeof frame.name === 'string'
+      return typeof frame.id === 'string' && typeof frame.capability === 'string' && typeof frame.method === 'string'
         && typeof frame.args === 'object' && frame.args !== null && !Array.isArray(frame.args)
         && typeof frame.expiresAt === 'number' && Number.isFinite(frame.expiresAt) && frame.expiresAt > 0
         ? {
-            t: 'tool.call',
+            t: 'capability.call',
             id: frame.id,
-            name: frame.name,
+            capability: frame.capability,
+            method: frame.method,
             args: frame.args as Record<string, unknown>,
             expiresAt: frame.expiresAt,
             ...(typeof frame.sessionId === 'string' ? { sessionId: frame.sessionId } : {}),
           }
         : undefined
-    case 'tool.cancel':
-      return typeof frame.id === 'string' ? { t: 'tool.cancel', id: frame.id } : undefined
+    case 'capability.cancel':
+      return typeof frame.id === 'string' ? { t: 'capability.cancel', id: frame.id } : undefined
     case 'ping':
       return { t: 'ping' }
     case 'error':

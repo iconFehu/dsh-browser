@@ -41,7 +41,7 @@ export class CodexAppServerTransport implements JsonRpcTransport {
   async notify(method: string, params: unknown): Promise<void> { await this.connect(); this.socket?.send(JSON.stringify({ jsonrpc: '2.0', method, params })) }
   async close(): Promise<void> { this.socket?.close(); this.socket = undefined; this.fail(new Error('Codex App Server closed')) }
   onEvent(listener: (event: unknown) => void): void { this.listeners.add(listener) }
-  async toolResult(result: { id: string; ok: boolean; result?: unknown; error?: { code: string; message: string } }): Promise<void> { await this.notify('browser.tool.result', result) }
+  async toolResult(result: { id: string; ok: boolean; result?: unknown; error?: { code: string; message: string } }): Promise<void> { await this.notify('capability.result', result) }
 
   private handle(raw: unknown): void {
     let value: unknown; try { value = JSON.parse(String(raw)) } catch { return }

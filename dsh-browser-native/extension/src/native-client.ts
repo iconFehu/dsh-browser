@@ -43,7 +43,7 @@ export class NativeClient {
   cancel(id: string): void { this.port?.postMessage({ type: 'capability.cancel', id }) }
 
   sendToolResult(id: string, result: { ok: true; result: unknown } | { ok: false; error: { code: string; message: string } }): void {
-    this.port?.postMessage({ type: 'tool.result', id, ...result })
+    this.port?.postMessage({ type: 'capability.result', id, ...result })
   }
 
   private handleMessage(message: unknown): void {
