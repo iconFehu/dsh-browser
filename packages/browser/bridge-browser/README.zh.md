@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认证的 WebSocket 通道**（`/ext/bridge`），供 Chrome 扩展连接；把扩展调用投影到 dsh 0.1.5 Typert Remotes、按连接跟随 Session 与 Remote Event 流，并注册**纯文本**的 `browser_*` 工具集——经扩展在真实浏览器中读取页面、点击元素、填写表单、滚动与导航，登录态保留。侧边栏是对话入口，工具才是产品本体。
+dsh 的**浏览器操作桥**：在宿主 webserver 上挂载一个 **token 认证的 WebSocket 通道**（`/ext/bridge`），供 Chrome 扩展连接；把扩展调用投影到 dsh 0.1.5 Typert Remotes、按连接跟随 Session 与 Remote Event 流，并注册 8 个**纯文本**的高层浏览器能力工具——经扩展在真实浏览器中管理标签页、导航、访问浏览器数据，并可选地做 CDP 观察，登录态保留。侧边栏是对话入口，工具才是产品本体。
 
 **纯文本浏览器工具，多模态对话透传**：页面快照仍是结构化文本（标题、正文、带编号的交互清单、敏感值打码的表单字段），所有浏览器动作按稳定编号寻址。通用 RPC 通道也会透传 dsh 0.1.5 的图片消息和持久附件读取；延迟创建的新会话只在宿主确实挂载附件服务时声明图片限制。
 
@@ -57,23 +57,20 @@ npx @deepseek-ai/dsh@0.1.5-rc.2 web
 
 帧为按 `t` 判别的 JSON 对象，定义在 [`protocol.ts`](src/protocol.ts)，是通过 workspace 包的 `./src/*` export 与扩展共享的真源。构建后的包还会发布 `@yuxianglin/dsh-bridge-browser/protocol`，供外部消费方使用。
 
-- 客户端 → 服务端：`hello`（认证+caps）、`rpc`（网关方法透传）、`respond`（按 RPC id 结算宿主交互）、`tool.result`、`pong`。
-- 服务端 → 客户端：`hello.ok`（回显协商后的 caps）、`rpc.result`、`respond.result`（相关联的受理结果或错误）、`event`（由 dsh Remote 流与 waterfall 投影而来的 bridge 内部事件）、`tool.call`、`ping`、`error`。
+- 客户端 → 服务端：`hello`（认证+caps）、`rpc`（网关方法透传）、`respond`（按 RPC id 结算宿主交互）、`capability.result`、`pong`。
+- 服务端 → 客户端：`hello.ok`（回显协商后的 caps）、`rpc.result`、`respond.result`（相关联的受理结果或错误）、`event`（由 dsh Remote 流与 waterfall 投影而来的 bridge 内部事件）、`capability.call`（`capability` + `method` + `args`）、`capability.cancel`、`ping`、`error`。
+
+如果 `session.prompt` 的文本里含有 `[[dsh-browser-tab:<ref>]]`，bridge 会先去掉这个标记，再通过 `management.tabs.bind` 把该会话绑定到对应标签页。ref 是不透明的，Chrome 的 tab id 不会经过 bridge。
 
 每个 `respond` 同时携带全局唯一的传输 id 与宿主交互的 `rpcId`。扩展只把回执路由给发起操作的面板，并在超时、面板关闭或桥断线时拒绝尚未完成的响应。
 
 ## 工具
 
-| 工具 | 用途 |
-|---|---|
-| `browser_snapshot` | 结构化文本快照（标题/URL/正文/清单/表单）；`delta: true` 只返回变化。 |
-| `browser_click` / `browser_type` / `browser_press` | 按稳定编号操作清单元素。 |
-| `browser_scroll` / `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 页面移动。 |
-| `browser_get_text` / `browser_wait` | 读区域文本 / 稳定检测。 |
+注册 8 个能力工具：`botDetection`、`browserAuth`、`cdp`、`management`、`pageAssets`、`viewport`、`visibility`、`webmcp`。每个工具都接收 `method` 和 `args`，`management` 还接收 `namespace`。bridge 会在下发前按封闭的 schema 校验方法和参数；`cdp.call` 只接受允许名单内的观察与捕获方法。扩展目前实现了哪些方法，见根目录 README。
 
 ## 模型体验
 
-- **Token 影响**：一次 `browser_snapshot`（默认 32k 字符）对常见英文文本约为 8–10k token，具体取决于语言和分词器；delta 快照只需零头。系统提示段落引导模型按需快照而非囤积页面文本。
+- **Token 影响**：一次页面快照（默认 32k 字符）对常见英文文本约为 8–10k token，具体取决于语言和分词器；delta 快照只需零头。系统提示段落引导模型按需快照而非囤积页面文本。
 - **KV 缓存影响**：无（快照不做服务端缓存）。
 - **延迟**：每次动作等待扩展在真实页面执行 + 稳定检测（通常 0.2–2s；导航最长 5s）。
 - **失败模式**：`bridge-closed`（扩展未连接）、`timeout`、`no-active-tab`、`content-unavailable`（页面需刷新）、`action-failed`（编号过期——模型应重新快照）。

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -75,6 +75,7 @@ async function command(args) {
 }
 
 async function start(reopen) {
+  console.log(`Smoke start (reopen=${reopen})`)
   await rm(marker, { force: true })
   // The production bridge is registered through the normal profile command;
   // only test settings and the observation probe are additional patch rows.
@@ -123,7 +124,12 @@ async function start(reopen) {
   let socketError
   socket.on('error', error => { socketError = error })
   socket.on('message', data => { frames.push(JSON.parse(data.toString())) })
-  await once(socket, 'open')
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timed out waiting for smoke WebSocket open')), 15_000)
+    socket.once('open', () => { clearTimeout(timer); resolve() })
+    socket.once('error', error => { clearTimeout(timer); reject(error) })
+  })
+  console.log('Smoke WebSocket open')
   async function frame(predicate) {
     return waitFor(() => {
       if (socketError) throw socketError
@@ -134,12 +140,15 @@ async function start(reopen) {
   }
   socket.send(JSON.stringify({ t: 'hello', token, caps: { textOnly: true, snapshotMaxChars: 32_000, maxInteractiveItems: 60 } }))
   await frame(value => value.t === 'hello.ok')
+  console.log('Smoke hello.ok')
   return async (method, payload) => {
+    console.log(`Smoke RPC send: ${method}`)
     const id = randomUUID()
     socket.send(JSON.stringify({ t: 'rpc', id, method, payload }))
     const result = await frame(value => value.t === 'rpc.result' && value.id === id)
     assert.equal(result.ok, true, JSON.stringify(result))
     assert.equal(result.result?.result?.ok, true, JSON.stringify(result))
+    console.log(`Smoke RPC result: ${method}`)
     return result.result.result.value
   }
 }
@@ -150,7 +159,7 @@ async function observation() {
       if (error.code === 'ENOENT') return undefined
       throw error
     }
-  }, 'persisted session observation')
+  }, 'persisted session observation', 15_000)
 }
 
 async function stop() {
@@ -159,7 +168,10 @@ async function stop() {
   if (!host || host.exitCode !== null || host.signalCode !== null) return
   const exited = once(host, 'exit')
   host.kill('SIGTERM')
-  const timeout = setTimeout(() => host.kill('SIGKILL'), 10_000)
+  const timeout = setTimeout(() => {
+    if (process.platform === 'win32' && host?.pid) void new Promise(resolve => execFile('taskkill', ['/pid', String(host.pid), '/t', '/f'], () => resolve()))
+    else host?.kill('SIGKILL')
+  }, 3_000)
   try { await exited } finally { clearTimeout(timeout) }
   host = undefined
 }

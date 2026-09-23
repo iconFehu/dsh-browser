@@ -47,19 +47,14 @@ The paired Playwright / extension duration ratio was **1.24** (95% CI **1.16–1
 
 ## Core capabilities
 
-| Capability | Tool | Notes |
+The model sees eight high-level capability tools. Each call names a `method` (and, for `management`, a `namespace`), for example `management` with `namespace=tabs, method=list`.
+
+| Capability | Methods wired end to end | Notes |
 |---|---|---|
-| Read page | `browser_snapshot` | Structured text snapshot: title, URL, main text, numbered controls, and masked form fields; `delta: true` returns only changes |
-| Click element | `browser_click` | Click links, buttons, checkboxes, and other controls by inventory number |
-| Fill forms | `browser_type` | React/Vue-compatible input; `replace` clears the field first |
-| Press keys | `browser_press` | Keyboard events such as Enter, Tab, Escape, and arrow keys |
-| Scroll | `browser_scroll` | Viewport scrolling: up, down, top, and bottom |
-| Navigate | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it (`active:false` keeps the current tab in front) |
-| List tabs | `browser_list_tabs` | List accessible tabs with stable IDs, titles, URLs, window/index metadata, and active/controlled state |
-| Follow tab | `browser_follow_tab` | Bind later browser tools to a tab returned by `browser_list_tabs` without activating it |
-| Close tab | `browser_close_tab` | Close a tab returned by `browser_list_tabs` |
-| Read region | `browser_get_text` | Lazy-loaded or partial page text |
-| Wait for stability | `browser_wait` | Page-load and render-settle detection |
+| `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List tabs with stable IDs and active/controlled state, open a URL (`active:false` keeps the current tab in front), navigate the controlled tab, follow a listed tab without activating it, or close one listed tab |
+| `management` (Chrome) | `bookmarks.search` / `create` / `update` / `delete`, `history.search`, `downloads.list`, `tabGroups.list` / `create` / `ungroup` | Browser API operations; state-changing ones require approval |
+| `cdp` (Chrome, opt-in) | `call` with an allowlisted method, `events` | Observation only, behind **Browser developer mode** in Settings: deep DOM read, network and performance metrics, diagnostics, and screenshot/PDF export as a local save dialog |
+| `pageAssets`, `viewport`, `visibility`, `webmcp`, `browserAuth`, `botDetection` | — | Registered for tool-name compatibility; the extension does not implement these methods yet and answers with an error |
 | Send images | `session.prompt` / `session.attachment` | Host-capability-gated image drafts, image-only prompts, and durable history previews |
 | Quote a selection | side panel composer | Text you highlight in the page appears in the composer and is sent with your next message as fenced, attributed page content |
 
@@ -114,6 +109,8 @@ cd dsh-browser
 ```
 
 On Windows, run `.\scripts\install.ps1` from the checkout instead. After pulling or switching revisions, rerun the installer and reload the extension.
+
+For DSH Desktop on Windows, a tagged release also publishes a prebuilt `dsh-browser-windows.zip`. Extract it and run `powershell -NoProfile -ExecutionPolicy Bypass -File .\install-desktop.ps1`. It needs no Git, Node, or pnpm, verifies the SHA-256 checksum, and installs the extension to `~/.dsh/browser-extension`. Then enable compatibility mode and browser access in Desktop settings and leave the extension's bridge address empty. To build that bundle locally, run `pnpm run build` and then `.\scripts\package-release.ps1`.
 
 ### Firefox source build
 
@@ -189,5 +186,5 @@ If you encounter `cache.hydratePrepared is not a function`, update the repositor
 - When work begins, the assistant binds to the active tab (at prompt submission, or at the first direct browser-tool call). If you switch tabs manually, later browser actions pause and the side panel asks whether the assistant should continue on the original tab or follow the new one. Choosing the original tab permits background operation; the extension never silently retargets or changes your visible tab. Closing the controlled tab also pauses tools until you explicitly select the current page.
 - Text you highlight is captured only while a side panel is open and page sharing is not `off`, and never from password or payment-card fields. It stays inside the extension until you send the message, is dropped when you dismiss it or its page navigates or closes, and reaches the model inside the same untrusted-content boundary as page snapshots — including its source title and URL, which the page also controls.
 - Page-authored text is wrapped as untrusted input. The default `auto` mode reads only the controlled tab without an extra prompt; privacy-sensitive users can select `ask` for per-read confirmation or `off` to block reads entirely. In `ask` mode, the read dialog can allow one read or persistently switch back to `auto`; this can be reversed in Settings. Read page text is sent to the selected model.
-- Click, type, keypress, navigation, history, and reload calls fail closed until the user approves them. An origin may be trusted for the current side-panel session (cleared when the last panel closes or the service worker restarts), while permanent trust is managed explicitly in Settings. Explicit cross-origin `browser_navigate` calls and unknown history destinations always prompt again.
+- Click, type, keypress, navigation, history, and reload calls fail closed until the user approves them. There are two trust tiers, both managed in Settings: chat-scoped domains (added with “No confirmation while chatting” in an approval dialog) skip confirmation only while a side panel is open and stay stored until removed; permanently allowed domains apply even with the panel closed. Explicit cross-origin `management.tabs.navigate` calls and unknown history destinations always prompt again.
 - **Allow unrestricted browser control** is an explicit global opt-in. It becomes active only after the setting is saved successfully; while enabled, page reads, page actions, and tab list/follow/close operations run without approval prompts. Calls capture their access mode when received, so enabling unrestricted control never retroactively elevates an existing restricted call. Disabling it takes effect immediately, cancels calls that have not dispatched an action, waits for already-dispatched browser operations to settle, and only then saves the restrictive setting. A rapid re-enable remains restricted until that revocation finishes, and concurrent saves persist in request order. Browser-protected DOM content remains inaccessible in either mode.

@@ -8,19 +8,13 @@ The **browser-operation end** of dsh: the model reads and operates the browser p
 
 ## What the model can do
 
+Model calls arrive as `capability.call` frames and run inside the extension as `capability.method` names. The methods wired end to end are listed in the [root README](../../README.md#core-capabilities).
+
 | Capability | Action | Notes |
 |---|---|---|
-| Read page | `browser_snapshot` | Title/URL/main text/numbered inventory/form fields (sensitive values masked); `delta: true` returns only changes |
-| Click element | `browser_click` | Click by inventory number (links/buttons/checkboxes…), React/Vue compatible |
-| Fill forms | `browser_type` | Type text; `replace` clears first |
-| Keys | `browser_press` | Enter/Tab/Escape/arrows etc. |
-| Scroll | `browser_scroll` | Viewport scrolling (up/down/top/bottom) |
-| Navigate | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | Navigation inside the controlled tab, or open a URL in a new tab and follow it |
-| List tabs | `browser_list_tabs` | List accessible tabs with stable IDs, titles, URLs, and active/controlled state |
-| Follow tab | `browser_follow_tab` | Bind later browser tools to a listed tab without activating it |
-| Close tab | `browser_close_tab` | Close a listed tab |
-| Read region | `browser_get_text` | Lazy-loaded content / partial text |
-| Wait | `browser_wait` | Page load and render-settle detection |
+| Tabs | `management.tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List, open (`active:false` keeps the current tab in front), navigate, follow without activating, reload, or close a listed tab |
+| Browser data (Chrome) | `management.bookmarks.*` / `history.search` / `downloads.list` / `tabGroups.*` | Bookmarks, history, downloads, and tab groups; state-changing calls require approval |
+| Developer observation (Chrome) | `cdp.call` / `cdp.events` | Off by default; enable **Browser developer mode** in Settings. Attaches the debugger to the controlled tab for observation only |
 | Chat with images | `session.prompt` / `session.attachment` | Host-gated image selection, image-only sends, and durable history previews |
 | Quote what you highlight | side panel composer | The text you select in the page becomes a quote in the composer and rides along with your next message |
 
@@ -110,7 +104,7 @@ For extension-only development, load `extensions/dsh-browser/dist/` from `chrome
 - **Snapshot as the view**: the model's entire view of the page is structured text (title/URL/main/numbered elements/forms), budgeted at 32k chars by default (plugin-configurable, negotiated to the extension via `hello.ok`).
 - **Page text is untrusted input**: snapshots and targeted text reads are enclosed in a fresh nonce-bound trust marker and explicitly tell the model never to treat page-authored commands as instructions. This is defense in depth; extension-side action approval is the enforcement boundary.
 - **Stable numbering**: element numbers persist across snapshots (WeakMap + `data-dsh-el`), so the model can say "click 7"; a large page change explicitly reports "numbers reindexed".
-- **Delta mode**: `browser_snapshot({delta:true})` returns only changed element numbers, saving tokens.
+- **Delta mode**: `pageAssets.snapshot({delta:true})` returns only changed element numbers, saving tokens.
 - **Privacy**: password/credit-card values always render as `••••` and never leave the page; accessible names never use a sensitive field's current value.
 - **Tab affinity**: prompt submission binds the active tab before the model starts working; a direct browser-tool call also performs the initial bind when needed. A manual tab/window switch pauses later tools and asks whether the assistant should stay on the original tab or follow the newly visible one. Staying permits explicit background operation without changing the user's visible tab; following resets page-reference state. A closed controlled tab fails closed until the user selects the current page, and a switch withdraws any open action approval.
 - **Proportional approval**: the default `auto` mode lets the model read the controlled tab without an extra prompt; `ask` restores per-read confirmation and `off` blocks reads. In `ask` mode, the read dialog can allow one read or persistently switch back to `auto`, which remains reversible in Settings. State-changing tools still fail closed and show their exact origin plus a redacted action summary. The user may deny, allow once, or trust one origin for the current side-panel session; temporary trust clears when the last panel closes or the service worker restarts. Permanent trust is managed explicitly in Settings. If the panel is closed, an approval remains pending for up to 60 seconds and, when enabled, a system notification opens the panel for review. The panel restores the requesting session before showing a session-scoped approval. Caller cancellation or bridge timeout withdraws any open approval before an action can run.
@@ -128,5 +122,5 @@ Chrome uses `sidePanel`; Firefox uses `sidebar_action`. Both request `storage` (
 - Accessible cross-origin iframes are snapshotted and operated with stable `(frame, index)` addresses. Restricted or short-lived frames are reported as unavailable without failing the whole page snapshot.
 - Captcha/image-only controls cannot be handled — the tool result reports "elements with no accessible name" and asks the user to complete that step manually.
 - No automatic token rotation.
-- Synthetic `browser_press` events do not trigger browser-native default actions such as Tab focus movement, arrow-key scrolling, or Enter activation; use manual input when a workflow depends on those defaults.
-- `browser_wait` considers page load plus a fixed quiet window, but does not observe continuously changing DOM state; a live-updating SPA may be reported as stable.
+- Synthetic `management.tabs.press` events do not trigger browser-native default actions such as Tab focus movement, arrow-key scrolling, or Enter activation; use manual input when a workflow depends on those defaults.
+- `management.tabs.wait` considers page load plus a fixed quiet window, but does not observe continuously changing DOM state; a live-updating SPA may be reported as stable.

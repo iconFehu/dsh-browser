@@ -47,19 +47,14 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 
 ## 核心能力
 
-| 能力 | 工具 | 说明 |
+模型看到的是 8 个高层能力工具。每次调用指定 `method`（`management` 还要指定 `namespace`），例如 `management` 配 `namespace=tabs, method=list`。
+
+| 能力 | 已端到端接通的方法 | 说明 |
 |---|---|---|
-| 读取页面 | `browser_snapshot` | 结构化文本快照：标题/URL/正文/编号交互清单/表单字段（敏感值掩码）；`delta: true` 只返回变化 |
-| 点击元素 | `browser_click` | 按编号点击链接/按钮/复选框等 |
-| 填写表单 | `browser_type` | 输入文本（React/Vue 受控组件兼容），`replace` 清空重填 |
-| 按键 | `browser_press` | 键盘事件（Enter/Tab/Escape/方向键…） |
-| 滚动 | `browser_scroll` | 视口滚动（up/down/top/bottom） |
-| 页面导航 | `browser_navigate` / `browser_open_tab` / `browser_back` / `browser_forward` / `browser_reload` | 受控标签页内导航，或新开标签页并跟随（`active:false` 时保持当前页在前台） |
-| 列出标签页 | `browser_list_tabs` | 列出可访问标签页的稳定 ID、标题、URL、窗口/顺序以及活动/受控状态 |
-| 跟随标签页 | `browser_follow_tab` | 将后续浏览器工具绑定到 `browser_list_tabs` 返回的标签页，而不激活该标签页 |
-| 关闭标签页 | `browser_close_tab` | 关闭 `browser_list_tabs` 返回的标签页 |
-| 读取区域 | `browser_get_text` | 懒加载内容 / 局部文本 |
-| 等待稳定 | `browser_wait` | 页面加载与渲染稳定检测 |
+| `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出标签页的稳定 ID 与活动/受控状态、打开 URL（`active:false` 时保持当前页在前台）、在受控页导航、跟随已列出的标签页而不激活它，或关闭一个已列出的标签页 |
+| `management`（Chrome） | `bookmarks.search` / `create` / `update` / `delete`、`history.search`、`downloads.list`、`tabGroups.list` / `create` / `ungroup` | 浏览器 API 操作；会改动状态的操作需要确认 |
+| `cdp`（Chrome，需手动开启） | `call`（仅限允许名单内的方法）、`events` | 只做观察，需在设置里开启「浏览器开发者模式」：深层 DOM 读取、网络与性能指标、诊断，以及以本地保存对话框导出截图/PDF |
+| `pageAssets`、`viewport`、`visibility`、`webmcp`、`browserAuth`、`botDetection` | — | 为与工具名保持一致而注册；扩展尚未实现这些方法，调用会返回错误 |
 | 发送图片 | `session.prompt` / `session.attachment` | 按宿主能力启用图片草稿、纯图片消息和持久历史预览 |
 | 引用选中内容 | 侧栏输入框 | 在页面里划选的文字会出现在输入框，随下一条消息一起发送，并带上来源与不可信内容边界 |
 
@@ -114,6 +109,8 @@ cd dsh-browser
 ```
 
 Windows 请在 checkout 中运行 `.\scripts\install.ps1`。拉取或切换版本后，请重新运行安装器并重新加载扩展。
+
+Windows 上的 DSH Desktop 用户可以用预构建包：每个发布标签都会附带 `dsh-browser-windows.zip`，解压后运行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\install-desktop.ps1`。它不需要 Git、Node 或 pnpm，会校验 SHA-256，并把扩展安装到 `~/.dsh/browser-extension`。之后在 Desktop 设置中开启兼容模式和浏览器访问，扩展的桥地址留空即可。如需在本地打包，先运行 `pnpm run build`，再运行 `.\scripts\package-release.ps1`。
 
 ### Firefox 源码构建
 
@@ -189,5 +186,5 @@ pnpm --filter dsh-browser-extension run test
 - 助手开始工作时会绑定当时的活动标签页（提交提示时绑定；直接调用浏览器工具时则在首次调用绑定）。用户手动切页后，后续浏览器操作会暂停，侧栏会询问让助手继续原页面还是跟随新页面；选择原页面后允许在后台继续，但扩展绝不静默改绑或切换用户正在看的页面。受控标签页关闭后也会暂停，直到用户显式选择当前页。
 - 只有在侧栏打开、且页面共享不是「关闭」时才会捕获划选内容，密码和卡号字段永不读取。内容在发送之前始终留在扩展内部；移除、页面跳转或标签页关闭都会丢弃它；发送时与页面快照一样包在不可信内容边界内，来源标题和 URL 同样由页面提供，因此也放在边界之内。
 - 网页文字会标记为不可信输入。默认「自动共享」只按需读取受控标签页且不额外弹窗；对隐私敏感时可选择「每次询问」，或用「关闭」完全阻断读取。在「每次询问」模式下，读取弹窗可以仅允许一次，也可以持久切回自动读取；之后仍可在设置中关闭。读取的页面文字会发送给当前选择的模型。
-- 点击、输入、按键、导航、历史跳转和刷新默认失败关闭，必须由用户批准。可以只在当前侧栏会话中信任单个 origin（最后一个侧栏关闭或 Service Worker 重启即清空）；永久信任需在设置中显式管理。显式跨域 `browser_navigate` 和未知目标的历史跳转始终重新询问。
+- 点击、输入、按键、导航、历史跳转和刷新默认失败关闭，必须由用户批准。信任分两级，都在设置中管理：对话期间免确认的域名（在审批弹窗中选「对话期间免确认此域」添加）只在侧栏打开时生效，并保留到手动移除；永久免确认的域名即使侧栏关闭也生效。显式跨域 `management.tabs.navigate` 和未知目标的历史跳转始终重新询问。
 - **允许模型完全控制浏览器**是显式的全局选择，只有设置保存成功后才会生效。启用后，页面读取、页面操作和标签页列出/跟随/关闭都不会再请求确认。调用在收到时固定其访问模式，因此开启完全控制不会追溯提升已经开始的受限调用。关闭会立即生效：取消尚未下发操作的调用，等待已经下发到浏览器的操作完成，再保存限制设置。快速重新开启也会在旧权限撤销完成前保持受限，并发保存会按请求顺序落盘。无论是否启用，浏览器受保护页面的 DOM 内容都无法访问。

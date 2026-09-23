@@ -27,6 +27,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { BridgeServer } from './server.ts'
+import { BridgeLogger } from './logger.ts'
 import { BrowserContextInjector } from './browser-context.ts'
 import { registerBrowserTools } from './tools.ts'
 import {
@@ -221,6 +222,11 @@ function mountBridge(
     },
     injectBrowserSnapshot: (sessionId, snapshot) => { browserContext.inject(sessionId, snapshot) },
     purgeSession,
+    logger: new BridgeLogger((entry) => {
+      const logger = ctx.logger as unknown as Record<string, ((message: string) => void) | undefined>
+      const write = logger[entry.level] ?? logger.info
+      write?.call(logger, `[${entry.event}] ${entry.message}`)
+    }),
   })
 
   const route: WebUpgradeRoute = {

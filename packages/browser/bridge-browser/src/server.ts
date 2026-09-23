@@ -36,6 +36,7 @@ import {
 } from './protocol.ts'
 import { SessionPurgeError } from './session-purge.ts'
 import { verifyToken } from './token.ts'
+import type { BridgeLogger } from './logger.ts'
 
 /**
  * Gateway methods the /api carrier pins to loopback (mirror of
@@ -106,6 +107,8 @@ export interface BridgeServerDeps {
   helloTimeoutMs?: number
   /** Server ping cadence; defaults to PING_INTERVAL_MS. */
   pingIntervalMs?: number
+  /** Redacting ring-buffer logger for connection and RPC lifecycle events. */
+  logger?: BridgeLogger
 }
 
 /** One in-flight tool call awaiting the extension's `capability.result`. */
@@ -167,6 +170,7 @@ export class BridgeServer {
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     const remote = this.deps.remoteAddressOverride ?? req.socket.remoteAddress
     const origin = req.headers.origin
+    this.deps.logger?.debug('bridge.connection.upgrade', 'WebSocket upgrade received', { metadata: { remote: remote ?? 'unknown', origin: origin?.startsWith('chrome-extension://') ? 'extension' : 'other' } })
     this.wss.handleUpgrade(req, socket, head, (ws) => { this.attach(ws, remote, origin) })
   }
 
@@ -314,12 +318,14 @@ export class BridgeServer {
           && typeof origin === 'string'
           && origin.startsWith('chrome-extension://')
         if (!loopbackNoToken && !verifyToken(this.deps.token, frame.token)) {
+          this.deps.logger?.warn('bridge.auth.failed', 'WebSocket authentication failed', { errorCode: 'authentication' })
           ws.close(4002, 'bad token')
           return
         }
         clearTimeout(helloTimer)
         helloTimer = undefined
         this.promote(ws, remoteAddress)
+        this.deps.logger?.info('bridge.connection.ready', 'Browser extension authenticated', { transport: 'websocket' })
         return
       }
       this.handleReadyFrame(frame)
@@ -327,6 +333,7 @@ export class BridgeServer {
     const onClose = (): void => {
       if (helloTimer !== undefined) clearTimeout(helloTimer)
       if (this.current !== null && this.current.ws === ws) this.replaceConnection()
+      this.deps.logger?.info('bridge.connection.closed', 'WebSocket connection closed')
     }
     ws.on('message', onMessage)
     ws.once('close', onClose)
@@ -470,6 +477,8 @@ export class BridgeServer {
       }
       return
     }
+    const started = Date.now()
+    this.deps.logger?.info('bridge.rpc.received', 'RPC request received', { requestId: frame.id, rpcId: frame.id, metadata: { method: frame.method } })
     try {
       const prepared = frame.method === 'session.prompt' ? extractBrowserTabMarker(frame.payload) : { payload: frame.payload }
       if (prepared.tabRef !== undefined) {
@@ -487,8 +496,11 @@ export class BridgeServer {
         ok: true,
         result: { type: 'server-response', rpcId: frame.id, result },
       })
+      this.deps.logger?.info('bridge.rpc.success', 'RPC request completed', { requestId: frame.id, rpcId: frame.id, durationMs: Date.now() - started, metadata: { method: frame.method } })
     } catch (error: unknown) {
-      sendFrame(conn.ws, { t: 'rpc.result', id: frame.id, ok: false, error: { code: 'internal', message: String(error) } })
+      const message = String(error)
+      this.deps.logger?.error('bridge.rpc.failed', message, { requestId: frame.id, rpcId: frame.id, durationMs: Date.now() - started, errorCode: 'internal', metadata: { method: frame.method } })
+      sendFrame(conn.ws, { t: 'rpc.result', id: frame.id, ok: false, error: { code: 'internal', message } })
     }
   }
 
