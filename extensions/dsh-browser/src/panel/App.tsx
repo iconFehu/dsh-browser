@@ -2176,7 +2176,7 @@ export function App(): React.JSX.Element {
             rows={2}
           />
           {tabPicker && matchingTabs.length > 0 && (
-            <div className="tab-picker" role="listbox" aria-label="Browser tabs">
+            <div className="tab-picker" role="listbox" aria-label={locale === 'zh' ? '浏览器标签页' : 'Browser tabs'}>
               {matchingTabs.map((tab) => (
                 <button key={tab.ref} type="button" role="option" onClick={() => {
                   const at = input.lastIndexOf('@')

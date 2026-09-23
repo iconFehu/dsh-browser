@@ -184,6 +184,39 @@ describe('background bridge lifecycle', () => {
     expect(FakeWebSocket.instances).toHaveLength(0)
   })
 
+  it('answers the internal tab-refs lookup with http(s) tab refs only', async () => {
+    const chromeMock = mockChrome({
+      tabQuery: async () => [
+        { id: 7, windowId: 2, title: 'Docs', url: 'https://example.com/docs', favIconUrl: 'https://example.com/icon.png' },
+        { id: 8, windowId: 2, title: 'Settings', url: 'chrome://settings' },
+      ] as chrome.tabs.Tab[],
+    })
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify({
+      wsUrl: `ws://127.0.0.1:${new URL(url).port}/ext/bridge`,
+    }), { status: 200 })))
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    await import('../src/background/index.ts')
+
+    const panel = panelPort()
+    chromeMock.onConnect.emit(panel.port)
+    await vi.waitFor(() => { expect(FakeWebSocket.instances).toHaveLength(1) })
+    const socket = FakeWebSocket.instances[0]!
+    socket.open()
+    await Promise.resolve()
+    socket.receive({ t: 'hello.ok', caps: { textOnly: true, snapshotMaxChars: 32_000, maxInteractiveItems: 60 } })
+    await Promise.resolve()
+    socket.receive({ t: 'capability.call', id: 'refs', capability: 'management', method: 'tabs.refs', args: {}, expiresAt: Date.now() + 10_000 })
+
+    await vi.waitFor(() => {
+      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'refs', ok: true }))
+    })
+    const result = socket.sent.find((frame) => (frame as { id?: string }).id === 'refs') as { result: { text: string } }
+    const refs = JSON.parse(result.result.text) as Record<string, unknown>[]
+    expect(refs).toHaveLength(1)
+    expect(refs[0]).toMatchObject({ windowId: 2, title: 'Docs', url: 'https://example.com/docs' })
+    expect(Object.keys(refs[0]!).sort()).toEqual(['favIconUrl', 'ref', 'title', 'updatedAt', 'url', 'windowId'])
+  })
+
   it('does not let keepalive reclaim a bridge that replaced this client', async () => {
     const chromeMock = mockChrome()
     const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify({

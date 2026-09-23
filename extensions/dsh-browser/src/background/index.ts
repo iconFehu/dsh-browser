@@ -1110,6 +1110,16 @@ function routeToolCall(call: ToolCall): void {
   if (bridge === null) return
   // A Web Client prompt carrying an @tab marker binds its session before the
   // prompt runs; the ref is opaque and was chosen by the user in a picker.
+  // Internal lookup behind the Web Client's @tab picker; the bridge only serves
+  // it to the host's own loopback Web UI and never offers it to the model.
+  if (call.name === 'management.tabs.refs') {
+    void listBrowserTabRefs().then(
+      (refs) => bridge?.send({ t: 'capability.result', id: call.id, ok: true, result: { text: JSON.stringify(refs) } }),
+      (error: unknown) => bridge?.send({ t: 'capability.result', id: call.id, ok: false,
+        error: { code: 'action-failed', message: error instanceof Error ? error.message : String(error) } }),
+    )
+    return
+  }
   if (call.name === 'management.tabs.bind') {
     const ref = typeof call.args.ref === 'string' ? call.args.ref : ''
     void bindTabRef(ref, call.sessionId).then(

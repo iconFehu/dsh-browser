@@ -2,7 +2,9 @@
  * Browser half of `@yuxianglin/dsh-bridge-browser`.
  *
  * When the host plugin is active, this client registers a General-settings row
- * that shows the pasteable bridge WebSocket URL for the Chrome extension.
+ * that shows the pasteable bridge WebSocket URL for the Chrome extension, and
+ * (when the input-trigger service is present) an `@` source that references a
+ * browser tab as `[[dsh-browser-tab:<ref>]]` in the submitted prompt.
  */
 window.__ModuleLoader__.load({
   id: '@yuxianglin/dsh-bridge-browser',
@@ -12,6 +14,7 @@ window.__ModuleLoader__.load({
 
     const BRIDGE_PATH = '/ext/bridge'
     const BRIDGE_CONFIG_PATH = '/ext/bridge-config'
+    const BROWSER_TABS_PATH = '/ext/browser-tabs'
     const LOCALE_NS = 'bridge-browser'
     const STYLE_ID = '@yuxianglin/dsh-bridge-browser/BridgeAddressRow'
     const inject = ['slots', 'locale']
@@ -171,6 +174,45 @@ window.__ModuleLoader__.load({
         order: 100,
         locale: LOCALE_NS,
       }, BridgeAddressRow))
+      // Optional: hosts without the input-trigger pipeline keep the settings row.
+      ctx.inject(['inputTriggers'], (triggerCtx) => {
+        triggerCtx.effect(() => triggerCtx.inputTriggers.registerSource(browserTabSource), 'bridge-browser: @tab source')
+      })
+    }
+
+    const browserTabSource = {
+      trigger: '@',
+      name: 'browser-tab',
+      order: -20,
+      async candidates(_session, request) {
+        // Same-origin fetch: the host answers only its own loopback Web UI.
+        const response = await fetch(BROWSER_TABS_PATH, { cache: 'no-store', credentials: 'same-origin', signal: request.signal })
+        if (!response.ok) return []
+        const tabs = await response.json()
+        if (!Array.isArray(tabs)) return []
+        const query = request.query.toLocaleLowerCase()
+        return tabs
+          .filter((tab) => tab !== null && typeof tab === 'object' && typeof tab.ref === 'string'
+            && `${tab.title ?? ''} ${tab.url ?? ''}`.toLocaleLowerCase().includes(query))
+          .slice(0, 20)
+          .map((tab) => ({ name: tab.title || tab.url, description: tab.url, icon: 'session', value: tab.ref }))
+      },
+      onPick({ candidate }) {
+        if (typeof candidate.value !== 'string') return undefined
+        return {
+          insert: {
+            source: 'browser-tab',
+            ref: candidate.value,
+            label: candidate.name,
+            appearance: 'session',
+            clipboardText: `@${candidate.name}`,
+          },
+        }
+      },
+      codec: {
+        clipboardText: (ref) => ref,
+        serialize: (ref) => Promise.resolve(`[[dsh-browser-tab:${ref}]]`),
+      },
     }
 
     module.exports.apply = apply

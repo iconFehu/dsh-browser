@@ -1363,6 +1363,62 @@ textarea:focus-visible {
   box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.1), var(--shadow);
 }
 
+/* @tab picker: open tabs matching the text after "@" in the composer. Titles
+   and URLs are page-authored, so each row clamps to one line. */
+.tab-picker {
+  display: flex;
+  max-height: 220px;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.tab-picker > button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tab-picker > button:hover,
+.tab-picker > button:focus-visible {
+  outline: none;
+  background: var(--blue-wash);
+}
+
+.tab-picker > button:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.tab-picker strong,
+.tab-picker small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-picker strong {
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 600;
+}
+
+.tab-picker small {
+  color: var(--muted);
+  font-size: calc(11.5px * var(--ui-scale));
+}
+
 /* Page selection: the quote the user attached, in the composer and in the
    sent message. Page-authored text, so it is clamped and never markdown. */
 .page-selection {

@@ -28,6 +28,7 @@ import type { WebRoute, WebUpgradeRoute } from '@deepseek-ai/dsh-host-webserver'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { BridgeServer } from './server.ts'
 import { BridgeLogger } from './logger.ts'
+import { createBrowserTabsRoute } from './browser-tabs-route.ts'
 import { BrowserContextInjector } from './browser-context.ts'
 import { registerBrowserTools } from './tools.ts'
 import {
@@ -250,6 +251,10 @@ function mountBridge(
     },
   }
   ctx.effect(() => ctx.webServer.register(configRoute), 'bridge-browser: /ext/bridge-config route')
+  ctx.effect(
+    () => ctx.webServer.register(createBrowserTabsRoute(server, resolved.toolTimeoutMs)),
+    'bridge-browser: /ext/browser-tabs route',
+  )
 
   ctx.effect(() => {
     const disposers = registerBrowserTools(ctx, server, {

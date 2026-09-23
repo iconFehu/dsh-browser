@@ -26,7 +26,7 @@ export const BRIDGE_SESSION_PURGE_METHOD = 'bridge.session.purge'
 /** Extension RPC used by Web Clients to populate an @tab picker. */
 export const BRIDGE_BROWSER_TABS_LIST_METHOD = 'browser.tabs.list'
 
-/** Public tab metadata; Chrome's numeric tab id never crosses the bridge. */
+/** Public tab metadata for @tab pickers; `ref` is the only handle `management.tabs.bind` accepts. */
 export interface BrowserTabRef {
   ref: string
   windowId: number
