@@ -9,6 +9,7 @@
  * @module
  */
 
+import type { DiagnosticCode } from './discovery.ts'
 import type { BridgeCaps, ClientFrame, ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import {
   DEFAULT_SNAPSHOT_MAX_CHARS,
@@ -21,6 +22,7 @@ export type BridgeState = 'connecting' | 'connected' | 'reconnecting' | 'stopped
 
 /** Frame/state sinks owned by the background assembly. */
 export interface BridgeSinks {
+  onDiagnostic?(code: DiagnosticCode): void
   onStateChange(state: BridgeState): void
   onFrame(frame: ServerFrame): void
   onHelloOk(caps: BridgeCaps): void
@@ -93,7 +95,7 @@ export class BridgeClient {
 
   /** Whether a frame can be sent right now. */
   get connected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN
+    return this.state === 'connected' && this.ws !== null && this.ws.readyState === WebSocket.OPEN
   }
 
   /**
@@ -103,7 +105,7 @@ export class BridgeClient {
    */
   send(frame: ClientFrame): boolean {
     const socket = this.ws
-    if (socket === null || socket.readyState !== WebSocket.OPEN) return false
+    if (!this.connected || socket === null || socket.readyState !== WebSocket.OPEN) return false
     socket.send(JSON.stringify(frame))
     return true
   }
@@ -126,7 +128,11 @@ export class BridgeClient {
       // failure. Yield permanently so two open profiles cannot reconnect in a
       // tight loop and repeatedly evict one another.
       socket.addEventListener('close', (event) => {
+        if (this.ws !== socket || !this.running || generation !== this.generation) return
+        if (event.code === 4002) this.sinks.onDiagnostic?.('authentication')
+        if (event.code === 4001) this.sinks.onDiagnostic?.('handshake-timeout')
         if (event.code !== 4000 || this.ws !== socket || !this.running) return
+        this.sinks.onDiagnostic?.('replaced')
         this.running = false
         this.clearAckTimer()
         this.ws = null
@@ -135,15 +141,18 @@ export class BridgeClient {
       this.emitState('connecting')
 
       await new Promise<void>((resolve) => {
-        socket.addEventListener('open', () => { resolve() }, { once: true })
-        socket.addEventListener('close', () => { resolve() }, { once: true })
-        socket.addEventListener('error', () => { resolve() }, { once: true })
+        const timeout = setTimeout(() => { socket.close(); resolve() }, HELLO_ACK_TIMEOUT_MS)
+        const finish = (): void => { clearTimeout(timeout); resolve() }
+        socket.addEventListener('open', finish, { once: true })
+        socket.addEventListener('close', finish, { once: true })
+        socket.addEventListener('error', finish, { once: true })
       })
       if (!this.running || generation !== this.generation) {
         socket.close()
         return
       }
       if (socket.readyState !== WebSocket.OPEN) {
+        this.sinks.onDiagnostic?.('not-found')
         await this.fail(socket)
         continue
       }
@@ -158,12 +167,14 @@ export class BridgeClient {
       let authed = false
       const accepted = await new Promise<boolean>((resolve) => {
         const onMessage = (event: MessageEvent): void => {
+          if (this.ws !== socket || !this.running || generation !== this.generation) return
           const frame = parseBridgeFrame(String(event.data))
           if (frame === undefined) return
           if (!authed) {
             if (frame.t === 'hello.ok') {
               authed = true
               this.clearAckTimer()
+              this.emitState('connected')
               resolve(true)
               this.sinks.onHelloOk(frame.caps)
             } else if (frame.t === 'error' || frame.t === 'rpc.result' || frame.t === 'event') {
@@ -179,18 +190,18 @@ export class BridgeClient {
         }
         socket.addEventListener('message', onMessage)
         socket.addEventListener('close', () => {
-          this.clearAckTimer()
+          if (this.ws === socket) this.clearAckTimer()
           resolve(false)
         }, { once: true })
-        this.ackTimer = setTimeout(() => resolve(false), HELLO_ACK_TIMEOUT_MS)
+        this.ackTimer = setTimeout(() => { this.sinks.onDiagnostic?.('handshake-timeout'); resolve(false) }, HELLO_ACK_TIMEOUT_MS)
       })
-      if (!accepted || !this.running || generation !== this.generation) {
+      if (!this.running || generation !== this.generation) { socket.close(); return }
+      if (!accepted) {
         await this.fail(socket)
         continue
       }
 
       this.attempt = 0
-      this.emitState('connected')
 
       await new Promise<void>((resolve) => {
         socket.addEventListener('close', () => resolve(), { once: true })

@@ -83,9 +83,13 @@ export interface PanelCopy {
     trustedOrigins: string
     trustedOriginsHelp: string
     trustedOriginInput: string
+    panelTrustedOrigins: string
+    panelTrustedOriginsHelp: string
+    panelTrustedOriginInput: string
     add: string
     invalidOrigin: string
     noTrustedOrigins: string
+    noPanelTrustedOrigins: string
     remove: string
     removeOrigin: (origin: string) => string
     save: string
@@ -230,9 +234,9 @@ const EN: PanelCopy = {
     deny: 'Deny',
     allowOnce: 'Allow once',
     alwaysAllowReads: 'Always allow reads',
-    trustSession: 'Trust this domain for this session',
+    trustSession: 'No confirmation while chatting',
     readFootnote: 'Esc to deny · You can disable automatic reading in Settings at any time',
-    actionFootnote: 'Esc to deny · Temporary trust ends when the side panel closes · Typed content is never shown',
+    actionFootnote: 'Esc to deny · Chat-scoped no-confirmation is kept until you remove it and applies only while the side panel is open · Typed content is never shown',
   },
   tool: {
     running: 'Working on page',
@@ -256,6 +260,12 @@ const EN: PanelCopy = {
       'management.tabs.reload': 'Reload page',
       'pageAssets.getText': 'Extract text',
       'management.tabs.wait': 'Wait for page',
+      'cdp.diagnostics': 'Page diagnostics',
+      'cdp.network': 'Network activity',
+      'cdp.performance': 'Performance metrics',
+      'cdp.dom': 'Deep page read',
+      'cdp.captureScreenshot': 'Screenshot',
+      'cdp.exportPdf': 'Export PDF',
     },
     overflow: (shown, total) => `${shown.join(' → ')} → ${total - shown.length} more`,
   },
@@ -296,7 +306,7 @@ const EN: PanelCopy = {
     title: 'Settings',
     bridgeAddress: 'Bridge address',
     bridgeHelp: 'Leave blank to detect a local service automatically',
-    bridgePlaceholder: 'Auto-detect 3080 / 3081 / 3090 / 14389 / 43189',
+    bridgePlaceholder: 'Auto-detect Desktop 43120–43152 / dsh web',
     tokenHelp: 'Required by Firefox and remote deployments',
     tokenPlaceholder: 'Required for Firefox / remote deployments',
     pageSharing: 'Page content sharing',
@@ -312,12 +322,16 @@ const EN: PanelCopy = {
     autoResumeSessionHelp: 'Reopen the conversation associated with this tab and page path; other pages start a new conversation',
     cdpEnabled: 'Browser developer mode (full CDP, Chrome)',
     cdpEnabledHelp: 'Lets the assistant observe the controlled tab through Chrome DevTools Protocol: deep DOM and shadow/frame reading, console and Log, network requests and response bodies, performance metrics, PDF export, and screenshots. It can expose sensitive page and network data, and attaching pauses your own DevTools on that tab. Leave it off unless you are debugging, and turn it back off afterwards.',
-    trustedOrigins: 'Always-allowed domains',
-    trustedOriginsHelp: 'The approval dialog can trust a domain for the current side-panel session only. Domains added here permanently skip action confirmation when every known origin is trusted. Wildcards include the base domain and subdomains, and stay scoped to their scheme and port; `*.example.com` defaults to HTTPS.',
-    trustedOriginInput: 'Domain to always trust (e.g. https://example.com or https://*.example.com)',
+    trustedOrigins: 'Permanently allowed domains',
+    trustedOriginsHelp: 'Domains here permanently skip action confirmation when every known origin is trusted — even while the side panel is closed. Wildcards include the base domain and subdomains, and stay scoped to their scheme and port; `*.example.com` defaults to HTTPS.',
+    trustedOriginInput: 'Domain to trust permanently (e.g. https://example.com or https://*.example.com)',
+    panelTrustedOrigins: 'Chat-scoped allowed domains',
+    panelTrustedOriginsHelp: 'Domains here skip action confirmation only while a side panel conversation is open. They stay stored when the panel closes (just temporarily inactive) and reapply when it reopens; remove them here at any time. Same wildcard rules as permanent domains.',
+    panelTrustedOriginInput: 'Domain to trust while chatting (e.g. https://example.com or https://*.example.com)',
     add: 'Add',
     invalidOrigin: 'Enter an http:// or https:// origin, or a wildcard such as https://*.example.com.',
-    noTrustedOrigins: 'No domains are currently trusted.',
+    noTrustedOrigins: 'No permanently allowed domains.',
+    noPanelTrustedOrigins: 'No chat-scoped allowed domains yet. Use “No confirmation while chatting” in an approval dialog to add one.',
     remove: 'Remove',
     removeOrigin: (origin) => `Remove ${origin}`,
     save: 'Save & Connect',
@@ -462,9 +476,9 @@ const ZH: PanelCopy = {
     deny: '拒绝',
     allowOnce: '仅允许这一次',
     alwaysAllowReads: '始终允许读取',
-    trustSession: '本次会话信任此域',
+    trustSession: '对话期间免确认此域',
     readFootnote: 'Esc 拒绝 · 可随时在设置中关闭自动读取',
-    actionFootnote: 'Esc 拒绝 · 关闭侧栏后临时信任失效 · 输入内容不会显示',
+    actionFootnote: 'Esc 拒绝 · 对话期间免确认会保留到手动移除，且仅在侧栏打开时生效 · 输入内容不会显示',
   },
   tool: {
     running: '正在操作页面',
@@ -488,6 +502,12 @@ const ZH: PanelCopy = {
       'management.tabs.reload': '刷新页面',
       'pageAssets.getText': '提取文字',
       'management.tabs.wait': '等待页面',
+      'cdp.diagnostics': '页面诊断',
+      'cdp.network': '网络活动',
+      'cdp.performance': '性能指标',
+      'cdp.dom': '深层页面读取',
+      'cdp.captureScreenshot': '截图',
+      'cdp.exportPdf': '导出 PDF',
     },
     overflow: (shown, total) => `${shown.join(' → ')} 等${total}个工具`,
   },
@@ -528,7 +548,7 @@ const ZH: PanelCopy = {
     title: '设置',
     bridgeAddress: '桥地址',
     bridgeHelp: '留空时自动检测本机服务',
-    bridgePlaceholder: '自动检测 3080 / 3081 / 3090 / 14389 / 43189',
+    bridgePlaceholder: '自动检测 Desktop 43120–43152 / dsh web',
     tokenHelp: 'Firefox 和远程部署需要填写',
     tokenPlaceholder: 'Firefox / 远程部署时填写',
     pageSharing: '页面内容共享',
@@ -545,11 +565,15 @@ const ZH: PanelCopy = {
     cdpEnabled: '浏览器开发者模式（完整 CDP，Chrome）',
     cdpEnabledHelp: '允许助手用 Chrome DevTools Protocol 观察受控标签页：深层 DOM 与 shadow/frame 读取、console 与 Log、网络请求与响应体、性能指标、PDF 导出和截图。它会暴露敏感的页面与网络数据，附加期间还会暂停该标签页你自己的 DevTools。除非在调试，否则请保持关闭，用完后关闭。',
     trustedOrigins: '永久免确认域名',
-    trustedOriginsHelp: '审批框可只信任本次侧栏会话。这里添加的域名仅在所有已知来源均受信任时免除操作确认。通配符包含主域及其子域，并严格区分协议和端口；`*.example.com` 默认使用 HTTPS。',
+    trustedOriginsHelp: '这里的域名在所有已知来源均受信任时免除操作确认，且永久生效——即使侧栏关闭也有效。通配符包含主域及其子域，并严格区分协议和端口；`*.example.com` 默认使用 HTTPS。',
     trustedOriginInput: '要永久信任的域名（如 https://example.com 或 https://*.example.com）',
+    panelTrustedOrigins: '对话期间免确认域名',
+    panelTrustedOriginsHelp: '这里的域名仅当侧栏对话开启时免除操作确认。关闭侧栏后条目不会消失，只是暂时不生效；重新打开侧栏即恢复，可随时在此移除。通配符规则与永久域名相同。',
+    panelTrustedOriginInput: '要在对话期间信任的域名（如 https://example.com 或 https://*.example.com）',
     add: '添加',
     invalidOrigin: '请输入 http://、https:// 来源或 https://*.example.com 形式的通配符。',
-    noTrustedOrigins: '尚未信任任何域名。',
+    noTrustedOrigins: '尚未配置永久免确认域名。',
+    noPanelTrustedOrigins: '尚未配置对话期间免确认域名。可在审批弹窗中选「对话期间免确认此域」来添加。',
     remove: '移除',
     removeOrigin: (origin) => `移除 ${origin}`,
     save: '保存并连接',

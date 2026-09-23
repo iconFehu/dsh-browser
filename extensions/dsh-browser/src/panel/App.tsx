@@ -8,6 +8,8 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { ConnectionCard } from './ConnectionCard.tsx'
+import type { ConnectionDiagnostic } from '../background/discovery.ts'
 import { BRIDGE_SESSION_PURGE_METHOD, DEFAULT_SNAPSHOT_MAX_CHARS } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import type { BridgeCaps } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import type { ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
@@ -40,6 +42,7 @@ import {
 } from './pending-questions.ts'
 import { normalizeTrustedOrigin } from '../security/trusted-origins.ts'
 import type { PageSelection } from '../selection.ts'
+import type { BrowserTabRef } from '../background/tab-registry.ts'
 import {
   selectionPromptText,
   selectionSourceLabel,
@@ -609,14 +612,32 @@ export function App(): React.JSX.Element {
   const locale = useMemo(() => getUiLocale(), [])
   const copy = PANEL_COPY[locale]
   const [api] = useState<PanelApi>(() => connectPanel())
+  const [diagnostic, setDiagnostic] = useState<ConnectionDiagnostic>()
+  const [bridgeAddress, setBridgeAddress] = useState<string>()
   const [state, setState] = useState<BridgeState>('stopped')
   const [caps, setCaps] = useState<BridgeCaps | null>(null)
   const [settings, setSettings] = useState<PanelSettings | null>(null)
   const [rows, setRows] = useState<Row[]>([])
   const [streamRow, setStreamRow] = useState<Row | null>(null)
   const [draft, setDraft] = useState<ComposerDraft<DraftImage>>(() => emptyComposerDraft())
+  const [browserTabs, setBrowserTabs] = useState<BrowserTabRef[]>([])
+  const [tabPicker, setTabPicker] = useState(false)
+  const [tabQuery, setTabQuery] = useState('')
+  const [selectedTabRef, setSelectedTabRef] = useState<string | null>(null)
   const input = draft.text
   const draftImages = draft.images
+  const matchingTabs = browserTabs.filter((tab) => `${tab.title} ${tab.url}`.toLocaleLowerCase().includes(tabQuery.toLocaleLowerCase())).slice(0, 8)
+
+  useEffect(() => {
+    const optionalApi = api as PanelApi & {
+      onBrowserTabs?: (callback: (tabs: BrowserTabRef[]) => void) => () => void
+      listBrowserTabs?: () => Promise<BrowserTabRef[]>
+    }
+    const off = optionalApi.onBrowserTabs?.(setBrowserTabs) ?? (() => {})
+    const tabsPromise = optionalApi.listBrowserTabs?.()
+    void tabsPromise?.then(setBrowserTabs).catch(() => {})
+    return off
+  }, [api])
   const [selection, setSelection] = useState<PageSelection | null>(null)
   const [imageLimits, setImageLimits] = useState<ImageAttachmentLimits | null>(null)
   const [addingImages, setAddingImages] = useState(false)
@@ -631,6 +652,7 @@ export function App(): React.JSX.Element {
   const [approvalQueue, setApprovalQueue] = useState<ApprovalRequest[]>([])
   const [tabAffinity, setTabAffinity] = useState<TabAffinityState | null>(null)
   const [trustedOriginInput, setTrustedOriginInput] = useState('')
+  const [panelTrustedOriginInput, setPanelTrustedOriginInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showSessionPicker, setShowSessionPicker] = useState(false)
   const [loadingSessions, setLoadingSessions] = useState(false)
@@ -754,6 +776,7 @@ export function App(): React.JSX.Element {
         sharePageContent: raw?.sharePageContent ?? 'auto',
         unrestrictedBrowserAccess: raw?.unrestrictedBrowserAccess ?? false,
         trustedActionOrigins: raw?.trustedActionOrigins ?? [],
+        panelTrustedActionOrigins: raw?.panelTrustedActionOrigins ?? [],
         approvalNotifications: raw?.approvalNotifications ?? true,
         autoResumeSession: raw?.autoResumeSession ?? true,
         cdpEnabled: raw?.cdpEnabled === true,
@@ -767,7 +790,9 @@ export function App(): React.JSX.Element {
   const [sessionEpoch, setSessionEpoch] = useState(0)
   const lastStateRef = useRef<BridgeState | null>(null)
   useEffect(() => {
-    const offStatus = api.onStatus((next, nextCaps) => {
+    const offStatus = api.onStatus((next, nextCaps, nextDiagnostic, address) => {
+      setDiagnostic(nextDiagnostic)
+      setBridgeAddress(address)
       setState(next)
       setCaps(nextCaps)
       const previous = lastStateRef.current
@@ -1371,7 +1396,9 @@ export function App(): React.JSX.Element {
           submittedImages,
         ),
         ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
+        ...(selectedTabRef === null ? {} : { tabRef: selectedTabRef }),
       })
+      setSelectedTabRef(null)
       if (submittedSelection !== null) {
         // Keep the background authoritative while the prompt is in flight.
         // Conditional clearing cannot consume a newer highlight captured in
@@ -1681,19 +1708,21 @@ export function App(): React.JSX.Element {
     }
   }
 
-  function addTrustedOrigin(): void {
-    const origin = normalizeWebOrigin(trustedOriginInput)
+  function addTrustedOrigin(list: 'trustedActionOrigins' | 'panelTrustedActionOrigins'): void {
+    const input = list === 'panelTrustedActionOrigins' ? panelTrustedOriginInput : trustedOriginInput
+    const origin = normalizeWebOrigin(input)
     if (origin === null) return
     setSettings((current) => current === null
       ? current
-      : { ...current, trustedActionOrigins: [...new Set([...current.trustedActionOrigins, origin])].sort() })
-    setTrustedOriginInput('')
+      : { ...current, [list]: [...new Set([...current[list], origin])].sort() })
+    if (list === 'panelTrustedActionOrigins') setPanelTrustedOriginInput('')
+    else setTrustedOriginInput('')
   }
 
-  function removeTrustedOrigin(origin: string): void {
+  function removeTrustedOrigin(list: 'trustedActionOrigins' | 'panelTrustedActionOrigins', origin: string): void {
     setSettings((current) => current === null
       ? current
-      : { ...current, trustedActionOrigins: current.trustedActionOrigins.filter((candidate) => candidate !== origin) })
+      : { ...current, [list]: current[list].filter((candidate) => candidate !== origin) })
   }
 
   // 状态栏只显示连接状态；快照上限是技术细节，在设置页说明（见 hint）。
@@ -1713,6 +1742,7 @@ export function App(): React.JSX.Element {
             <h1>{copy.settings.title}</h1>
           </div>
         </div>
+        <ConnectionCard diagnostic={diagnostic} address={bridgeAddress} retry={() => api.rediscover()} />
         <UpdateCard copy={copy.update} />
         <div className="settings-panel">
           <label>
@@ -1918,10 +1948,10 @@ export function App(): React.JSX.Element {
               aria-label={copy.settings.trustedOriginInput}
               value={trustedOriginInput}
               onChange={(event) => setTrustedOriginInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') addTrustedOrigin() }}
+              onKeyDown={(event) => { if (event.key === 'Enter') addTrustedOrigin('trustedActionOrigins') }}
               placeholder="https://example.com / https://*.example.com"
             />
-            <button disabled={normalizeWebOrigin(trustedOriginInput) === null} onClick={addTrustedOrigin}>{copy.settings.add}</button>
+            <button disabled={normalizeWebOrigin(trustedOriginInput) === null} onClick={() => addTrustedOrigin('trustedActionOrigins')}>{copy.settings.add}</button>
           </div>
           {trustedOriginInput.trim() !== '' && normalizeWebOrigin(trustedOriginInput) === null && (
             <p className="origin-error">{copy.settings.invalidOrigin}</p>
@@ -1930,7 +1960,33 @@ export function App(): React.JSX.Element {
           {settings?.trustedActionOrigins.map((origin) => (
             <div className="trusted-origin" key={origin}>
               <code>{origin}</code>
-              <button onClick={() => removeTrustedOrigin(origin)} aria-label={copy.settings.removeOrigin(origin)}>{copy.settings.remove}</button>
+              <button onClick={() => removeTrustedOrigin('trustedActionOrigins', origin)} aria-label={copy.settings.removeOrigin(origin)}>{copy.settings.remove}</button>
+            </div>
+          ))}
+        </section>
+        <section className="trusted-origins" aria-labelledby="panel-trusted-origins-title">
+          <div>
+            <span id="panel-trusted-origins-title">{copy.settings.panelTrustedOrigins}</span>
+            <small>{copy.settings.panelTrustedOriginsHelp}</small>
+          </div>
+          <div className="trusted-origin-add">
+            <input
+              aria-label={copy.settings.panelTrustedOriginInput}
+              value={panelTrustedOriginInput}
+              onChange={(event) => setPanelTrustedOriginInput(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter') addTrustedOrigin('panelTrustedActionOrigins') }}
+              placeholder="https://example.com / https://*.example.com"
+            />
+            <button disabled={normalizeWebOrigin(panelTrustedOriginInput) === null} onClick={() => addTrustedOrigin('panelTrustedActionOrigins')}>{copy.settings.add}</button>
+          </div>
+          {panelTrustedOriginInput.trim() !== '' && normalizeWebOrigin(panelTrustedOriginInput) === null && (
+            <p className="origin-error">{copy.settings.invalidOrigin}</p>
+          )}
+          {settings?.panelTrustedActionOrigins.length === 0 && <p>{copy.settings.noPanelTrustedOrigins}</p>}
+          {settings?.panelTrustedActionOrigins.map((origin) => (
+            <div className="trusted-origin" key={origin}>
+              <code>{origin}</code>
+              <button onClick={() => removeTrustedOrigin('panelTrustedActionOrigins', origin)} aria-label={copy.settings.removeOrigin(origin)}>{copy.settings.remove}</button>
             </div>
           ))}
         </section>
@@ -1945,6 +2001,7 @@ export function App(): React.JSX.Element {
 
   return (
     <><div className="app">
+      {state !== 'connected' && <ConnectionCard diagnostic={diagnostic} address={bridgeAddress} retry={() => api.rediscover()} />}
       <header className="topbar">
         <span className="connection" role="status">
           <span className={`dot ${state}`} />
@@ -2100,7 +2157,12 @@ export function App(): React.JSX.Element {
           <textarea
             value={input}
             onChange={(e) => {
-              if (!sendingRef.current) setDraft((current) => ({ ...current, text: e.target.value }))
+              if (sendingRef.current) return
+              const value = e.target.value
+              setDraft((current) => ({ ...current, text: value }))
+              const at = value.lastIndexOf('@')
+              setTabPicker(at >= 0 && !/[\s\n]/.test(value.slice(at + 1)))
+              setTabQuery(at >= 0 ? value.slice(at + 1) : '')
             }}
             onKeyDown={(e) => {
               // isComposing：输入法组词中的回车是确认选字，不是发送。
@@ -2113,6 +2175,21 @@ export function App(): React.JSX.Element {
             disabled={!sessionReady || busy}
             rows={2}
           />
+          {tabPicker && matchingTabs.length > 0 && (
+            <div className="tab-picker" role="listbox" aria-label="Browser tabs">
+              {matchingTabs.map((tab) => (
+                <button key={tab.ref} type="button" role="option" onClick={() => {
+                  const at = input.lastIndexOf('@')
+                  const next = `${input.slice(0, at)}@${tab.title || tab.url} `
+                  setDraft((current) => ({ ...current, text: next }))
+                  setSelectedTabRef(tab.ref)
+                  setTabPicker(false)
+                }}>
+                  <strong>{tab.title || tab.url}</strong><small>{tab.url}</small>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="composer-actions">
             <span className="composer-actions-start">
               <input

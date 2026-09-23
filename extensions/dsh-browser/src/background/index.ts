@@ -39,7 +39,9 @@ import {
   type RespondResult,
 } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import type { ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
-import { BRIDGE_CONFIG_PATH, BRIDGE_PATH } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+import { BRIDGE_PATH } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+import { discoverLocalBridge, inspectBridge, safeAddress, DESKTOP_PORTS, type ConnectionDiagnostic } from './discovery.ts'
+import { tabRefFromChrome, type BrowserTabRef } from './tab-registry.ts'
 import { BridgeClient, type BridgeState } from './bridge.ts'
 import { createRpc } from './rpc.ts'
 import {
@@ -60,7 +62,7 @@ import {
 import { getUiLocale } from '../i18n.ts'
 import { InteractionResponseRouter } from './responses.ts'
 import {
-  actionCoveredByTrustedOrigins,
+  actionCoveredByTrustedTiers,
   normalizeTrustedOrigin,
 } from '../security/trusted-origins.ts'
 import { TransientEventCache } from './transient-events.ts'
@@ -91,8 +93,10 @@ export interface Settings {
   sharePageContent: 'ask' | 'auto' | 'off'
   /** Allow every browser operation without an approval prompt. */
   unrestrictedBrowserAccess: boolean
-  /** Origins whose state-changing actions may run without another prompt. */
+  /** Origins whose state-changing actions may run without another prompt, permanently (even with the side panel closed). */
   trustedActionOrigins: string[]
+  /** Origins exempt from action confirmation only while a side panel conversation is open; kept until removed. */
+  panelTrustedActionOrigins: string[]
   /** Show an OS notification when no side panel can display an approval. */
   approvalNotifications: boolean
   /** Restore the current tab and page path's conversation when the panel reopens. */
@@ -114,56 +118,41 @@ const SETTINGS_DEFAULTS: Settings = {
   sharePageContent: 'auto',
   unrestrictedBrowserAccess: false,
   trustedActionOrigins: [],
+  panelTrustedActionOrigins: [],
   approvalNotifications: true,
   autoResumeSession: true,
   cdpEnabled: false,
 }
 
-/**
- * 自动探测的候选端口：
- * - dsh web（CLI）默认 3080，端口被占时依次回退 3081 / 3090；
- * - DSH Desktop 默认由系统随机分配本地 Web 端口（`dsh-desktop.port: 0`），
- *   用户指南推荐固定为 43189（见 deepseek-harness-desktop docs/user-guide）；
- * - 14389 为历史桌面应用端口，保留兼容旧版。
- */
-const DISCOVERY_PORTS = [3080, 3081, 3090, 14389, 43189]
 const LEGACY_LOCAL_URL = 'ws://127.0.0.1:3080'
 
-/** 探测本机 dsh 的桥地址：fetch /ext/bridge-config 直到成功。 */
-async function discoverBridge(shouldContinue: () => boolean = () => true): Promise<string | undefined> {
-  for (const port of DISCOVERY_PORTS) {
-    if (!shouldContinue()) return undefined
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/ext/bridge-config`, {
-        signal: AbortSignal.timeout(1_500),
-      })
-      if (!shouldContinue()) return undefined
-      if (!response.ok) continue
-      const body = await response.json() as { wsUrl?: unknown }
-      if (typeof body.wsUrl === 'string' && body.wsUrl.startsWith('ws://')) return body.wsUrl
-    } catch {
-      // 该端口没有 dsh 或未挂桥：试下一个。
-    }
-  }
-  return undefined
+let diagnostic: ConnectionDiagnostic = { code: 'discovering' }
+let currentAddress = ''
+let lastDesktopAddress: string | undefined
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+let discoveryAttempt = 0
+function scheduleDiscovery(): void {
+  if (retryTimer !== undefined || panelPorts.size === 0) return
+  retryTimer = setTimeout(() => {
+    retryTimer = undefined
+    if (panelPorts.size === 0 || bridge?.state === 'connected' || diagnostic.code === 'replaced') return
+    if (bridge?.state === 'connecting') { scheduleDiscovery(); return }
+    void startBridge()
+  }, Math.min(30_000, 1000 * 2 ** Math.min(discoveryAttempt++, 5)))
 }
 
 /** Avoid opening a noisy loopback WebSocket until the local bridge responds. */
 async function probeBridge(url: string): Promise<boolean> {
-  try {
-    const target = new URL(url)
-    if (target.hostname !== '127.0.0.1') return true
-    target.protocol = target.protocol === 'wss:' ? 'https:' : 'http:'
-    target.pathname = BRIDGE_CONFIG_PATH
-    target.search = ''
-    target.hash = ''
-    const response = await fetch(target, { signal: AbortSignal.timeout(1_500) })
-    if (!response.ok) return false
-    const body = await response.json() as { wsUrl?: unknown }
-    return typeof body.wsUrl === 'string' && body.wsUrl.startsWith('ws://')
-  } catch {
-    return false
-  }
+  if (new URL(url).hostname !== '127.0.0.1') return true
+  const revision = bridgeStartRevision
+  const result = await inspectBridge(url)
+  if (revision !== bridgeStartRevision || url !== currentAddress) return false
+  if (result.code !== 'connected') { diagnostic = result; broadcastStatus() }
+  return result.code === 'connected'
+}
+
+function statusMessage(): Record<string, unknown> {
+  return { type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps, diagnostic, address: safeAddress(currentAddress) }
 }
 
 const STORAGE_KEY = 'dshSettings'
@@ -197,8 +186,6 @@ const pageSessionContexts = new PageSessionContextTracker({
   },
 })
 void chrome.storage.session.remove(LEGACY_RECENT_SESSION_STORAGE_KEY).catch(() => {})
-/** Ephemeral allowlist: cleared when the last side panel closes or this worker restarts. */
-const sessionTrustedActionOrigins = new Set<string>()
 /** Tool calls that are either withdrawable or completing an already-dispatched action. */
 interface ActiveToolCall {
   controller: AbortController
@@ -264,7 +251,8 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 async function loadSettings(): Promise<Settings> {
-  const stored = await chrome.storage.local.get(STORAGE_KEY)
+  const stored = await chrome.storage.local.get([STORAGE_KEY, 'lastDesktopAddress'])
+  lastDesktopAddress = typeof stored.lastDesktopAddress === 'string' ? stored.lastDesktopAddress : undefined
   const loaded = normalizeSettings({ ...SETTINGS_DEFAULTS, ...(stored[STORAGE_KEY] as Partial<Settings> | undefined) })
   if (loaded.bridgeUrl === LEGACY_LOCAL_URL || loaded.bridgeUrl === `${LEGACY_LOCAL_URL}/`) {
     loaded.bridgeUrl = ''
@@ -316,6 +304,9 @@ function normalizeSettings(candidate: Settings): Settings {
   const trusted = Array.isArray(candidate.trustedActionOrigins)
     ? [...new Set(candidate.trustedActionOrigins.map(normalizeTrustedOrigin).filter((entry): entry is string => entry !== undefined))].sort()
     : []
+  const panelTrusted = Array.isArray(candidate.panelTrustedActionOrigins)
+    ? [...new Set(candidate.panelTrustedActionOrigins.map(normalizeTrustedOrigin).filter((entry): entry is string => entry !== undefined))].sort()
+    : []
   const sharePageContent = candidate.sharePageContent === 'auto' || candidate.sharePageContent === 'off'
     ? candidate.sharePageContent
     : candidate.sharePageContent === 'ask' ? 'ask' : 'auto'
@@ -324,6 +315,7 @@ function normalizeSettings(candidate: Settings): Settings {
     sharePageContent,
     unrestrictedBrowserAccess: candidate.unrestrictedBrowserAccess === true,
     trustedActionOrigins: trusted,
+    panelTrustedActionOrigins: panelTrusted,
     approvalNotifications: candidate.approvalNotifications !== false,
     autoResumeSession: candidate.autoResumeSession !== false,
     cdpEnabled: candidate.cdpEnabled === true,
@@ -348,7 +340,7 @@ function disarmBridgeKeepalive(): void {
 }
 
 function broadcastStatus(): void {
-  const payload = { type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps }
+  const payload = statusMessage()
   for (const port of panelPorts) {
     try { port.postMessage(payload) } catch { /* port already closed */ }
   }
@@ -900,10 +892,13 @@ async function authorizeToolCall(
 ): Promise<ApprovalAuthorization> {
   if (signal.aborted) return 'cancelled'
   if (unrestrictedAccess) return 'approved'
-  if (actionCoveredByTrustedOrigins(
+  // Permanent trust always applies; the chat-scoped allowlist is consulted only
+  // while at least one side panel conversation is open.
+  if (actionCoveredByTrustedTiers(
     prompt,
-    sessionTrustedActionOrigins,
+    panelPorts.size > 0,
     settings.trustedActionOrigins,
+    settings.panelTrustedActionOrigins,
   )) {
     return 'approved'
   }
@@ -916,7 +911,9 @@ async function authorizeToolCall(
     return 'approved'
   }
   if (decision === 'trust-session' && prompt.kind === 'action' && prompt.canTrust && prompt.origins.length === 1) {
-    sessionTrustedActionOrigins.add(prompt.origins[0]!)
+    await persistSettings({
+      panelTrustedActionOrigins: [...settings.panelTrustedActionOrigins, prompt.origins[0]!],
+    })
     return 'approved'
   }
   // Retain wire compatibility with panels from the previous build. The new UI
@@ -1049,6 +1046,24 @@ async function followModelSelectedTab(tab: chrome.tabs.Tab, sessionId?: string):
   commitTabAffinityRebind(summary, sessionId, 'background')
 }
 
+/** Public refs for every http(s) tab, for the panel and Web Client @tab pickers. */
+async function listBrowserTabRefs(): Promise<BrowserTabRef[]> {
+  const tabs = await chrome.tabs.query({})
+  return tabs.map(tabRefFromChrome)
+    .filter((tab): tab is BrowserTabRef => tab !== null)
+    .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url))
+}
+
+/** Bind the session to the tab the user picked by opaque ref. */
+async function bindTabRef(ref: string, sessionId?: string): Promise<void> {
+  const tabs = await chrome.tabs.query({})
+  const selected = tabs.find((tab) => tabRefFromChrome(tab)?.ref === ref)
+  const summary = selected === undefined ? null : summarizeTab(selected)
+  if (summary === null) throw new Error('The selected browser tab is no longer available')
+  await pageSessionContexts.ready
+  commitTabAffinityRebind(summary, sessionId, 'active')
+}
+
 /** 把协商的快照预算下发到受控页（尚未绑定时使用活动页）。 */
 async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> {
   await affinityReady
@@ -1093,6 +1108,17 @@ function dispatchCdpCall(
 /** Route one capability.call frame to the user-approved controlled tab. */
 function routeToolCall(call: ToolCall): void {
   if (bridge === null) return
+  // A Web Client prompt carrying an @tab marker binds its session before the
+  // prompt runs; the ref is opaque and was chosen by the user in a picker.
+  if (call.name === 'management.tabs.bind') {
+    const ref = typeof call.args.ref === 'string' ? call.args.ref : ''
+    void bindTabRef(ref, call.sessionId).then(
+      () => bridge?.send({ t: 'capability.result', id: call.id, ok: true, result: { text: 'Browser tab bound.' } }),
+      (error: unknown) => bridge?.send({ t: 'capability.result', id: call.id, ok: false,
+        error: { code: 'action-failed', message: error instanceof Error ? error.message : String(error) } }),
+    )
+    return
+  }
   activeToolCalls.get(call.id)?.controller.abort()
   const controller = new AbortController()
   const unrestrictedAccess = unrestrictedAccessEnabled()
@@ -1271,10 +1297,16 @@ function cancelAllToolCalls(): void {
 /** (Re)start the bridge with the current settings. 零配置：地址留空时自动探测；回环连接无需 token。 */
 async function startBridge(): Promise<void> {
   const revision = ++bridgeStartRevision
+  if (retryTimer !== undefined) clearTimeout(retryTimer)
+  retryTimer = undefined
   if (panelPorts.size === 0) return
+  diagnostic = { code: 'discovering' }
   let url = settings.bridgeUrl
   if (url === '') {
-    url = await discoverBridge(() => revision === bridgeStartRevision && panelPorts.size > 0) ?? ''
+    const result = await discoverLocalBridge(lastDesktopAddress, () => revision === bridgeStartRevision && panelPorts.size > 0)
+    if (revision !== bridgeStartRevision || panelPorts.size === 0) return
+    diagnostic = result.code === 'connected' ? { code: 'discovering', address: result.address } : result
+    url = result.code === 'connected' ? result.address ?? '' : ''
   }
   // Discovery is asynchronous. A panel may have closed or a newer settings
   // update may have started while its fetches were in flight.
@@ -1283,7 +1315,9 @@ async function startBridge(): Promise<void> {
     bridge?.stop()
     bridge = null
     rpc = null
+    currentAddress = ''
     broadcastStatus()
+    scheduleDiscovery()
     return
   }
   // 手动填的地址常只有主机部分（如 ws://127.0.0.1:3080）；桥路径是协议
@@ -1291,13 +1325,27 @@ async function startBridge(): Promise<void> {
   try {
     const parsed = new URL(url)
     if (parsed.pathname === '' || parsed.pathname === '/') parsed.pathname = BRIDGE_PATH
+    if (!['ws:', 'wss:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Invalid bridge URL')
     url = parsed.toString()
   } catch {
-    // 非法 URL 原样交给 WebSocket 构造函数报错。
+    diagnostic = { code: 'invalid-response' }
+    currentAddress = ''
+    bridge?.stop()
+    broadcastStatus()
+    return
   }
+  currentAddress = url
   if (bridge === null) {
     const client = new BridgeClient({
+      onDiagnostic: (code) => { diagnostic = { code, address: safeAddress(currentAddress) }; broadcastStatus() },
       onStateChange: (state) => {
+        if (state === 'connected') {
+          diagnostic = { code: 'connected', address: safeAddress(currentAddress) }
+          discoveryAttempt = 0
+          if (retryTimer !== undefined) clearTimeout(retryTimer)
+          retryTimer = undefined
+        }
+        if (state === 'reconnecting' && settings.bridgeUrl === '') scheduleDiscovery()
         if (state !== 'connected') {
           cancelAllToolCalls()
           interactionResponses.failAll(responseMessages().disconnected)
@@ -1319,6 +1367,10 @@ async function startBridge(): Promise<void> {
       },
       onHelloOk: (negotiated) => {
         caps = negotiated
+        if (settings.bridgeUrl === '' && DESKTOP_PORTS.includes(Number(new URL(currentAddress).port))) {
+          lastDesktopAddress = currentAddress
+          void chrome.storage.local.set({ lastDesktopAddress }).catch(() => {})
+        }
         broadcastStatus()
         void pushBudgetToControlledTab(negotiated)
       },
@@ -1378,7 +1430,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (!panelPorts.has(port)) return
     if (bridge === null || bridge.state === 'stopped') return startBridge()
   })
-  try { port.postMessage({ type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps }) } catch { /* port closed */ }
+  try { port.postMessage(statusMessage()) } catch { /* port closed */ }
   void affinityReady.then(async () => {
     await syncActiveTab()
     try { port.postMessage({ type: 'tab-affinity', state: tabAffinity.snapshot() }) } catch { /* port closed */ }
@@ -1387,6 +1439,14 @@ chrome.runtime.onConnect.addListener((port) => {
     if (typeof message !== 'object' || message === null) return
     const msg = message as { type?: string }
     switch (msg.type) {
+      case 'browser-tabs.request': {
+        const request = message as { id?: unknown }
+        if (typeof request.id !== 'string') break
+        void listBrowserTabRefs().then((refs) => {
+          try { port.postMessage({ type: 'rpc.result', id: request.id, ok: true, result: { result: { ok: true, value: refs } } }) } catch { /* port closed */ }
+        })
+        break
+      }
       case 'rpc': {
         const rpcMsg = message as { id: string; method: string; payload?: unknown }
         const rpcSessionId = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
@@ -1397,13 +1457,20 @@ chrome.runtime.onConnect.addListener((port) => {
           : sessionSnapshotRefreshes.get(rpcSessionId) ?? Promise.resolve()
         const prepare = rpcMsg.method === 'session.prompt'
           ? Promise.resolve().then(async () => {
+              const requestedRef = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
+                ? (rpcMsg.payload as { tabRef?: unknown }).tabRef : undefined
+              if (typeof requestedRef === 'string' && rpcSessionId !== undefined) await bindTabRef(requestedRef, rpcSessionId)
               await refresh
               return rpcSessionId === undefined || tabAffinity.getSessionTab(rpcSessionId) !== undefined
             })
           : Promise.resolve(true)
         void prepare.then((ready) => {
           if (!ready) throw new Error('This session is not bound to a live browser tab')
-          return gatewayRpc(rpcMsg.method, rpcMsg.payload)
+          // tabRef is extension-local; the gateway prompt schema never sees it.
+          const payload = rpcMsg.method === 'session.prompt' && typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null && 'tabRef' in rpcMsg.payload
+            ? (({ tabRef: _tabRef, ...rest }) => rest)(rpcMsg.payload as Record<string, unknown>)
+            : rpcMsg.payload
+          return gatewayRpc(rpcMsg.method, payload)
         }).then(
           (result) => {
             try { port.postMessage({ type: 'rpc.result', id: rpcMsg.id, ok: true, result }) } catch { /* port closed */ }
@@ -1605,9 +1672,14 @@ chrome.runtime.onConnect.addListener((port) => {
         })
         break
       }
+      case 'rediscover':
+        diagnostic = { code: 'discovering' }
+        discoveryAttempt = 0
+        void settingsReady.then(() => startBridge())
+        break
       case 'request-status':
         try {
-          port.postMessage({ type: 'status', state: bridge?.state ?? ('stopped' as BridgeState), caps })
+          port.postMessage(statusMessage())
           port.postMessage({ type: 'tab-affinity', state: tabAffinity.snapshot() })
           const statusWindowId = panelWindows.get(port)
           if (statusWindowId !== undefined) {
@@ -1646,7 +1718,6 @@ chrome.runtime.onConnect.addListener((port) => {
     if (panelPorts.size === 0) {
       bridgeStartRevision += 1
       bridge?.suspendReconnect()
-      sessionTrustedActionOrigins.clear()
       cdpObservation.setPanelActive(false)
       approvals.notifyPending()
       if (bridge?.state !== 'connected') disarmBridgeKeepalive()

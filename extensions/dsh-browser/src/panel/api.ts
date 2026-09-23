@@ -7,12 +7,14 @@
 
 import type { BridgeCaps, RespondResult } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import type { ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+import type { ConnectionDiagnostic } from '../background/discovery.ts'
 import type { BridgeState } from '../background/bridge.ts'
 import type { Settings } from '../background/index.ts'
 import type { TabAffinityDecision, TabAffinityState } from '../background/tab-affinity.ts'
 import type { ApprovalDecision, ApprovalRequest } from '../security/approval.ts'
 import { parsePageSelection, type PageSelection } from '../selection.ts'
 import { getUiLocale } from '../i18n.ts'
+import type { BrowserTabRef } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 
 /** Panel-side subset of the extension settings. */
 export type PanelSettings = Settings
@@ -48,6 +50,8 @@ interface SettingsResultMessage {
 
 interface StatusMessage {
   type: 'status'
+  diagnostic?: ConnectionDiagnostic
+  address?: string
   state: BridgeState
   caps: BridgeCaps | null
 }
@@ -89,7 +93,8 @@ interface SessionResumeHintMessage {
   sessionId: string | null
 }
 
-type BackgroundMessage = RpcResultMessage | RespondResultMessage | SettingsResultMessage | StatusMessage | EventMessage | ApprovalRequestMessage | ApprovalResolvedMessage | TabAffinityMessage | TabAffinityRebindResultMessage | SelectionMessage | SessionResumeHintMessage
+type BackgroundMessage = RpcResultMessage | RespondResultMessage | SettingsResultMessage | StatusMessage | EventMessage | ApprovalRequestMessage | ApprovalResolvedMessage | TabAffinityMessage | TabAffinityRebindResultMessage | SelectionMessage | SessionResumeHintMessage | BrowserTabsMessage
+type BrowserTabsMessage = { type: 'browser-tabs'; tabs: BrowserTabRef[] }
 
 /** Structured gateway failure retained for product-level error handling. */
 export class PanelRpcError extends Error {
@@ -115,7 +120,7 @@ function panelRpcError(failure: RpcFailurePayload | undefined, fallbackMessage: 
 export interface PanelApi {
   rpc<T = unknown>(method: string, payload?: unknown): Promise<T>
   respond(rpcId: string, result: RespondResult): Promise<unknown>
-  onStatus(callback: (state: BridgeState, caps: BridgeCaps | null) => void): () => void
+  onStatus(callback: (state: BridgeState, caps: BridgeCaps | null, diagnostic?: ConnectionDiagnostic, address?: string) => void): () => void
   onEvent(callback: (frame: ServerFrame) => void): () => void
   onApprovalRequest(callback: (request: ApprovalRequest) => void): () => void
   onApprovalResolved(callback: (id: string) => void): () => void
@@ -131,7 +136,10 @@ export interface PanelApi {
   registerWindow(windowId: number): Promise<void>
   setActiveSession(sessionId: string, isNew?: boolean): Promise<void>
   updateSettings(settings: Partial<PanelSettings>): Promise<void>
+  rediscover(): Promise<void>
   requestStatus(): Promise<void>
+  onBrowserTabs?: (callback: (tabs: BrowserTabRef[]) => void) => () => void
+  listBrowserTabs?: () => Promise<BrowserTabRef[]>
 }
 
 /** Connect to the background service worker and return the panel API. */
@@ -150,13 +158,14 @@ export function connectPanel(): PanelApi {
     resolve: () => void
     reject: (error: Error) => void
   }>()
-  const statusListeners = new Set<(state: BridgeState, caps: BridgeCaps | null) => void>()
+  const statusListeners = new Set<(state: BridgeState, caps: BridgeCaps | null, diagnostic?: ConnectionDiagnostic, address?: string) => void>()
   const eventListeners = new Set<(frame: ServerFrame) => void>()
   const approvalListeners = new Set<(request: ApprovalRequest) => void>()
   const approvalResolvedListeners = new Set<(id: string) => void>()
   const tabAffinityListeners = new Set<(state: TabAffinityState) => void>()
   const selectionListeners = new Set<(selection: PageSelection | null) => void>()
   const sessionResumeHintListeners = new Set<(sessionId: string | null) => void>()
+  const browserTabsListeners = new Set<(tabs: BrowserTabRef[]) => void>()
 
   let port: chrome.runtime.Port | null = null
   let reconnectPromise: Promise<chrome.runtime.Port> | null = null
@@ -202,7 +211,7 @@ export function connectPanel(): PanelApi {
         break
       }
       case 'status':
-        for (const listener of statusListeners) listener(msg.state, msg.caps)
+        for (const listener of statusListeners) listener(msg.state, msg.caps, msg.diagnostic, msg.address)
         break
       case 'event':
         for (const listener of eventListeners) listener(msg.frame)
@@ -233,6 +242,9 @@ export function connectPanel(): PanelApi {
       }
       case 'session.resume-hint':
         for (const listener of sessionResumeHintListeners) listener(msg.sessionId)
+        break
+      case 'browser-tabs':
+        for (const listener of browserTabsListeners) listener((msg as BrowserTabsMessage).tabs)
         break
     }
   }
@@ -406,6 +418,15 @@ export function connectPanel(): PanelApi {
       sessionResumeHintListeners.add(callback)
       return () => { sessionResumeHintListeners.delete(callback) }
     },
+    onBrowserTabs(callback) { browserTabsListeners.add(callback); return () => { browserTabsListeners.delete(callback) } },
+    listBrowserTabs() {
+      return new Promise<BrowserTabRef[]>((resolve, reject) => {
+        const id = crypto.randomUUID()
+        const entry = { resolve: (value: unknown) => resolve(value as BrowserTabRef[]), reject }
+        pending.set(id, entry)
+        void send({ type: 'browser-tabs.request', id }, { kind: 'rpc', id }).catch(reject)
+      })
+    },
     respondToApproval(id, decision) {
       return send({ type: 'approval.response', id, decision })
     },
@@ -451,6 +472,7 @@ export function connectPanel(): PanelApi {
         })
       })
     },
+    rediscover() { return send({ type: 'rediscover' }) },
     requestStatus() {
       return send({ type: 'request-status' })
     },
