@@ -199,6 +199,9 @@ describe('tool-driven session checkpoints', () => {
     }
     await call('snapshot', 'pageAssets.snapshot')
     expect(storedUrlKey(sessionData)).toBe('https://example.com/start')
+    // A pageAssets/snapshot wire frame reaches the content script as its action name.
+    expect(sendMessage).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ action: 'pageAssets.snapshot' }), expect.anything())
+    expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'snapshot', ok: true }))
 
     let finishCommitted!: () => void
     action = async () => await new Promise((resolve) => {

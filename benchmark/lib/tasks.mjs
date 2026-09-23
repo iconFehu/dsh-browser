@@ -175,8 +175,16 @@ export function stateReached(instance, state) {
   return expectedState === undefined ? false : deepContains(state, expectedState)
 }
 
+/** The extension backend's capability tools (bridge-browser `BROWSER_TOOL_NAMES`). */
+const BROWSER_CAPABILITY_TOOLS = new Set(['botDetection', 'browserAuth', 'cdp', 'management', 'pageAssets', 'viewport', 'visibility', 'webmcp'])
+
+/** Browser tools are the Playwright baseline's `browser_*` set or the extension's capability tools. */
+export function isBrowserToolName(name) {
+  return name.startsWith('browser_') || BROWSER_CAPABILITY_TOOLS.has(name)
+}
+
 export function validateTask(instance, state, finalAnswer, toolNames = []) {
-  const violations = toolNames.filter((name) => !name.startsWith('browser_'))
+  const violations = toolNames.filter((name) => !isBrowserToolName(name))
   if (violations.length > 0) {
     return { success: false, reason: `used forbidden tools: ${[...new Set(violations)].join(', ')}` }
   }

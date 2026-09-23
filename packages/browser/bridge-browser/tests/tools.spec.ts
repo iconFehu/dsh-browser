@@ -59,8 +59,8 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const parameters = registered.find(({ name }) => name === 'management')!.definition.parameters as { properties: { namespace: { enum: string[] }; method: { enum: string[] }; args: { properties: Record<string, unknown> } } }
     expect(parameters.properties.namespace.enum).toEqual(['windows', 'tabs', 'tabGroups', 'bookmarks', 'history', 'downloads', 'events'])
-    expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'create', 'ungroup', 'search', 'delete', 'cancel', 'events'])
-    expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
+    expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'create', 'ungroup', 'search', 'delete', 'cancel', 'events'])
+    expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'index', 'frame', 'text', 'replace', 'key', 'direction', 'amount', 'ms', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
   })
 
   it('validates method-specific management arguments before dispatch', async () => {
@@ -78,7 +78,37 @@ describe('registerBrowserTools', () => {
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     const pageAssets = registered.find(({ name }) => name === 'pageAssets')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     expect(Object.keys(cdp.properties.args.properties)).toEqual(['method', 'params', 'afterSequence'])
-    expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['assetIds', 'kinds'])
+    expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'assetIds', 'kinds'])
+  })
+
+  it('routes page reads and page actions to the extension method names', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const run = (name: string) => registered.find((tool) => tool.name === name)!.definition.execute as (args: unknown, exec: unknown) => Promise<unknown>
+    const exec = { signal: new AbortController().signal }
+    await run('pageAssets')({ method: 'snapshot', args: { delta: true } }, exec)
+    await run('management')({ namespace: 'tabs', method: 'click', args: { index: 3, frame: 1 } }, exec)
+    await run('management')({ namespace: 'tabs', method: 'type', args: { index: 4, text: 'hi', replace: true } }, exec)
+    await run('management')({ namespace: 'tabs', method: 'back', args: {} }, exec)
+    expect(requestTool.mock.calls.map(([name, args]) => [name, args])).toEqual([
+      ['pageAssets', { method: 'snapshot', args: { delta: true } }],
+      ['management', { method: 'tabs.click', args: { index: 3, frame: 1 } }],
+      ['management', { method: 'tabs.type', args: { index: 4, text: 'hi', replace: true } }],
+      ['management', { method: 'tabs.back', args: {} }],
+    ])
+  })
+
+  it('rejects malformed page actions before dispatch', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const management = registered.find(({ name }) => name === 'management')!.definition.execute as (args: unknown, exec: unknown) => Promise<unknown>
+    const exec = { signal: new AbortController().signal }
+    await expect(management({ namespace: 'tabs', method: 'click', args: {} }, exec)).rejects.toThrow('non-negative integer index')
+    await expect(management({ namespace: 'tabs', method: 'type', args: { index: 1 } }, exec)).rejects.toThrow('requires text')
+    await expect(management({ namespace: 'tabs', method: 'press', args: {} }, exec)).rejects.toThrow('requires a key')
+    await expect(management({ namespace: 'tabs', method: 'scroll', args: { direction: 'left' } }, exec)).rejects.toThrow('direction')
+    await expect(management({ namespace: 'tabs', method: 'wait', args: { ms: -1 } }, exec)).rejects.toThrow('wait ms')
+    expect(requestTool).not.toHaveBeenCalled()
   })
 
   it('validates capability-specific arguments before dispatch', async () => {

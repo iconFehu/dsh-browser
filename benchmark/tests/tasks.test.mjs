@@ -17,6 +17,7 @@ test('state and answer validators reject incorrect results and forbidden tools',
   const correct = { notificationSaved: true, emailNotifications: true, extra: 'allowed' }
   assert.equal(stateReached(instance, correct), true)
   assert.equal(validateTask(instance, correct, '', ['browser_snapshot', 'browser_click']).success, true)
+  assert.equal(validateTask(instance, correct, '', ['pageAssets', 'management']).success, true)
   assert.equal(validateTask(instance, correct, '', ['exec_command']).success, false)
   assert.equal(validateTask(instance, { notificationSaved: true, emailNotifications: false }, '', []).success, false)
 })

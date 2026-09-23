@@ -51,10 +51,12 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 
 | 能力 | 已端到端接通的方法 | 说明 |
 |---|---|---|
+| `pageAssets` | `snapshot` / `getText` | 结构化文本快照（标题/URL/正文/编号交互清单/表单字段，敏感值掩码；`delta: true` 只返回变化），或读取整页/选择器范围内的纯文本 |
+| `management` | `tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | 按最新快照的编号操作元素（兼容 React/Vue 受控组件，`replace` 先清空），发送按键、滚动、等待页面稳定，以及在历史中前进后退 |
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出标签页的稳定 ID 与活动/受控状态、打开 URL（`active:false` 时保持当前页在前台）、在受控页导航、跟随已列出的标签页而不激活它，或关闭一个已列出的标签页 |
 | `management`（Chrome） | `bookmarks.search` / `create` / `update` / `delete`、`history.search`、`downloads.list`、`tabGroups.list` / `create` / `ungroup` | 浏览器 API 操作；会改动状态的操作需要确认 |
 | `cdp`（Chrome，需手动开启） | `call`（仅限允许名单内的方法）、`events` | 只做观察，需在设置里开启「浏览器开发者模式」：深层 DOM 读取、网络与性能指标、诊断，以及以本地保存对话框导出截图/PDF |
-| `pageAssets`、`viewport`、`visibility`、`webmcp`、`browserAuth`、`botDetection` | — | 为与工具名保持一致而注册；扩展尚未实现这些方法，调用会返回错误 |
+| `pageAssets.list` / `bundle`、`viewport`、`visibility`、`webmcp`、`browserAuth`、`botDetection` | — | 为与工具名保持一致而注册；扩展尚未实现这些方法，调用会返回错误 |
 | 发送图片 | `session.prompt` / `session.attachment` | 按宿主能力启用图片草稿、纯图片消息和持久历史预览 |
 | 引用选中内容 | 侧栏输入框 | 在页面里划选的文字会出现在输入框，随下一条消息一起发送，并带上来源与不可信内容边界 |
 

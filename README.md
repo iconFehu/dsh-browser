@@ -51,10 +51,12 @@ The model sees eight high-level capability tools. Each call names a `method` (an
 
 | Capability | Methods wired end to end | Notes |
 |---|---|---|
+| `pageAssets` | `snapshot` / `getText` | Structured text snapshot (title, URL, main text, numbered controls, masked form fields; `delta: true` returns only changes), or plain text from the page or a selector |
+| `management` | `tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | Operate numbered targets from the latest snapshot (React/Vue-compatible input; `replace` clears first), send keys, scroll, wait for the page to settle, and move through history |
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List tabs with stable IDs and active/controlled state, open a URL (`active:false` keeps the current tab in front), navigate the controlled tab, follow a listed tab without activating it, or close one listed tab |
 | `management` (Chrome) | `bookmarks.search` / `create` / `update` / `delete`, `history.search`, `downloads.list`, `tabGroups.list` / `create` / `ungroup` | Browser API operations; state-changing ones require approval |
 | `cdp` (Chrome, opt-in) | `call` with an allowlisted method, `events` | Observation only, behind **Browser developer mode** in Settings: deep DOM read, network and performance metrics, diagnostics, and screenshot/PDF export as a local save dialog |
-| `pageAssets`, `viewport`, `visibility`, `webmcp`, `browserAuth`, `botDetection` | — | Registered for tool-name compatibility; the extension does not implement these methods yet and answers with an error |
+| `pageAssets.list` / `bundle`, `viewport`, `visibility`, `webmcp`, `browserAuth`, `botDetection` | — | Registered for tool-name compatibility; the extension does not implement these methods yet and answers with an error |
 | Send images | `session.prompt` / `session.attachment` | Host-capability-gated image drafts, image-only prompts, and durable history previews |
 | Quote a selection | side panel composer | Text you highlight in the page appears in the composer and is sent with your next message as fenced, attributed page content |
 

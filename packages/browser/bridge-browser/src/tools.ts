@@ -13,8 +13,8 @@ const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Report CAPTCHA, bot-detection, access-denied, and challenge-loop states.',
   browserAuth: 'Coordinate a user-controlled browser authentication flow.',
   cdp: 'Use allowlisted Chrome DevTools observation and capture methods.',
-  management: 'Manage browser windows, tabs, tab groups, and bookmarks. Only methods listed in the schema are available.',
-  pageAssets: 'Read page context and bundle assets observed in the controlled page.',
+  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. Only methods listed in the schema are available.',
+  pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list/bundle cover observed assets.',
   viewport: 'Read, set, or reset the controlled tab viewport override.',
   visibility: 'Read or change whether the browser is visible to the user.',
   webmcp: 'Discover and invoke tools explicitly registered by the current page.',
@@ -23,8 +23,8 @@ const METHOD_GUIDE: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Methods: report.',
   browserAuth: 'Methods: request.',
   cdp: 'Methods: call, events. Use only for CDP observation/capture; navigation belongs to management.tabs.',
-  management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events.',
-  pageAssets: 'Methods: list, bundle.',
+  management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, click, type, press, scroll, wait, back, forward; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events.',
+  pageAssets: 'Methods: snapshot, getText, list, bundle.',
   viewport: 'Methods: get, set, reset.',
   visibility: 'Methods: get, set.',
   webmcp: 'Methods: fetchTools, call.',
@@ -34,7 +34,7 @@ const CAPABILITY_METHODS: Record<typeof BROWSER_TOOL_NAMES[number], readonly str
   browserAuth: ['request'],
   cdp: ['call', 'events'],
   management: [],
-  pageAssets: ['list', 'bundle'],
+  pageAssets: ['snapshot', 'getText', 'list', 'bundle'],
   viewport: ['get', 'set', 'reset'],
   visibility: ['get', 'set'],
   webmcp: ['fetchTools', 'call'],
@@ -46,7 +46,7 @@ const ALLOWED_CDP_METHODS = new Set([
 ])
 const MANAGEMENT_METHODS: Record<string, readonly string[]> = {
   windows: ['list'],
-  tabs: ['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close'],
+  tabs: ['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward'],
   tabGroups: ['list', 'create', 'update', 'ungroup'],
   bookmarks: ['search', 'create', 'update', 'delete'],
   history: ['search'],
@@ -64,7 +64,15 @@ const MANAGEMENT_ARG_SCHEMA = {
     tabId: { type: 'number', description: 'Browser tab id; required by tabs.activate.' },
     tabIds: { type: 'array', description: 'Non-empty browser tab id array; required by tabs.close.', items: { type: 'number' } },
     windowId: { type: 'number', description: 'Optional browser window id for tabs.list.' },
-    active: { type: 'boolean', description: 'When true, restrict tabs.list to the active tab.' },
+    active: { type: 'boolean', description: 'tabs.list: restrict to the active tab. tabs.open: bring the new tab to the front (default true; false opens it in the background).' },
+    index: { type: 'number', description: 'Element index from the latest pageAssets.snapshot; required by tabs.click and tabs.type.' },
+    frame: { type: 'number', description: 'Iframe number from pageAssets.snapshot; omit for the top page.' },
+    text: { type: 'string', description: 'Text for tabs.type. Sensitive values are never returned.' },
+    replace: { type: 'boolean', description: 'tabs.type: clear the existing value first. Defaults to append.' },
+    key: { type: 'string', description: 'tabs.press key using KeyboardEvent.key semantics, such as Enter, Tab, Escape, or ArrowDown.' },
+    direction: { type: 'string', enum: ['up', 'down', 'top', 'bottom'], description: 'tabs.scroll direction.' },
+    amount: { type: 'number', description: 'tabs.scroll pixels; ignored for top and bottom.' },
+    ms: { type: 'number', description: 'tabs.wait extra milliseconds after the settle check.' },
     groupId: { type: 'number', description: 'Tab group id for tabGroups.update.' },
     title: { type: 'string', description: 'Tab group title.' },
     color: { type: 'string', description: 'Tab group color.' },
@@ -85,7 +93,7 @@ const ARG_SCHEMAS = {
   botDetection: { type: 'object', additionalProperties: false, properties: { reason: { type: 'string', enum: ['captcha_failed', 'access_denied', 'challenge_loop', 'unexpected_bot_error'], required: true } } },
   browserAuth: { type: 'object', additionalProperties: false, description: 'Authentication request.', properties: { origin: { type: 'string', required: true }, fields: { type: 'array', required: true, description: 'Authentication fields.', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, label: { type: 'string', required: true }, type: { type: 'string', enum: ['text', 'password', 'otp'], required: true }, selector: { type: 'string', required: true }, required: { type: 'boolean', required: true } } } }, submit: { type: 'object', additionalProperties: false, properties: { action: { type: 'string', enum: ['click', 'press_enter'], required: true }, selector: { type: 'string', required: true } } } } },
   cdp: { type: 'object', additionalProperties: false, properties: { method: { type: 'string', required: true, description: 'Allowlisted CDP method.' }, params: { type: 'object', additionalProperties: true }, afterSequence: { type: 'number', description: 'Sequence cursor for cdp.events.' } } },
-  pageAssets: { type: 'object', additionalProperties: false, properties: { assetIds: { type: 'array', items: { type: 'string' } }, kinds: { type: 'array', items: { type: 'string', enum: ['font', 'image', 'stylesheet', 'video', 'other'] } } } },
+  pageAssets: { type: 'object', additionalProperties: false, properties: { delta: { type: 'boolean', description: 'snapshot: return only changes since the previous snapshot.' }, region: { type: 'string', description: 'snapshot: CSS selector or "main" to read only that region.' }, selector: { type: 'string', description: 'getText: CSS selector; omit to read the whole page.' }, frame: { type: 'number', description: 'Iframe number from snapshot; omit for the top page.' }, assetIds: { type: 'array', items: { type: 'string' } }, kinds: { type: 'array', items: { type: 'string', enum: ['font', 'image', 'stylesheet', 'video', 'other'] } } } },
   viewport: { type: 'object', additionalProperties: false, properties: { width: { type: 'number' }, height: { type: 'number' } } },
   visibility: { type: 'object', additionalProperties: false, properties: { visible: { type: 'boolean', required: true } } },
   webmcp: { type: 'object', additionalProperties: false, description: 'fetchTools takes no arguments; call takes tool and input.', properties: { tool: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', required: true }, description: { type: 'string' }, origin: { type: 'string', required: true }, registrationId: { type: 'string', required: true } } }, input: { type: 'object', additionalProperties: true } } },
@@ -128,13 +136,30 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
     if (args.tabId !== undefined && (typeof args.tabId !== 'number' || !Number.isSafeInteger(args.tabId) || args.tabId < 0)) throw new Error('management.tabs.reload tabId must be a non-negative integer')
   } else if (method === 'close') {
     if (!Array.isArray(args.tabIds) || args.tabIds.length === 0 || !args.tabIds.every((id) => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0)) throw new Error('management.tabs.close requires a non-empty integer tabIds array')
+  } else if (method === 'click' || method === 'type') {
+    if (typeof args.index !== 'number' || !Number.isSafeInteger(args.index) || args.index < 0) throw new Error(`management.tabs.${method} requires a non-negative integer index from pageAssets.snapshot`)
+    if (method === 'type' && typeof args.text !== 'string') throw new Error('management.tabs.type requires text')
+    if (method === 'type' && args.replace !== undefined && typeof args.replace !== 'boolean') throw new Error('management.tabs.type replace must be boolean')
+  } else if (method === 'press') {
+    if (typeof args.key !== 'string' || args.key.length === 0) throw new Error('management.tabs.press requires a key')
+  } else if (method === 'scroll') {
+    if (!['up', 'down', 'top', 'bottom'].includes(String(args.direction))) throw new Error('management.tabs.scroll direction must be up, down, top, or bottom')
+    if (args.amount !== undefined && (typeof args.amount !== 'number' || !Number.isFinite(args.amount) || args.amount < 0)) throw new Error('management.tabs.scroll amount must be a non-negative number')
+  } else if (method === 'wait') {
+    if (args.ms !== undefined && (typeof args.ms !== 'number' || !Number.isSafeInteger(args.ms) || args.ms < 0 || args.ms > 30_000)) throw new Error('management.tabs.wait ms must be an integer from 0 to 30000')
   }
+  if (['click', 'type', 'press', 'scroll', 'wait'].includes(method) && args.frame !== undefined
+    && (typeof args.frame !== 'number' || !Number.isSafeInteger(args.frame) || args.frame < 0)) throw new Error(`management.tabs.${method} frame must be a non-negative integer`)
 }
 
 function validateCapabilityArgs(capability: string, method: string, args: Record<string, unknown>): void {
   if (capability === 'botDetection' && !['captcha_failed', 'access_denied', 'challenge_loop', 'unexpected_bot_error'].includes(String(args.reason))) throw new Error('botDetection.report requires a supported reason')
   if (capability === 'cdp' && method === 'call' && (typeof args.method !== 'string' || !ALLOWED_CDP_METHODS.has(args.method))) throw new Error('cdp.call method is not allowlisted')
   if (capability === 'cdp' && method === 'events' && args.afterSequence !== undefined && (!Number.isSafeInteger(args.afterSequence) || Number(args.afterSequence) < 0)) throw new Error('cdp.events afterSequence must be a non-negative integer')
+  if (capability === 'pageAssets' && (method === 'snapshot' || method === 'getText')) {
+    if (args.frame !== undefined && (typeof args.frame !== 'number' || !Number.isSafeInteger(args.frame) || args.frame < 0)) throw new Error(`pageAssets.${method} frame must be a non-negative integer`)
+    if (method === 'snapshot' && args.delta !== undefined && typeof args.delta !== 'boolean') throw new Error('pageAssets.snapshot delta must be boolean')
+  }
   if (capability === 'pageAssets' && method === 'bundle') {
     if (args.assetIds !== undefined && (!Array.isArray(args.assetIds) || !args.assetIds.every((id) => typeof id === 'string' && id.length > 0))) throw new Error('pageAssets.bundle assetIds must be strings')
     if (args.kinds !== undefined && (!Array.isArray(args.kinds) || !args.kinds.every((kind) => ['font', 'image', 'stylesheet', 'video', 'other'].includes(String(kind))))) throw new Error('pageAssets.bundle kinds contains an unsupported asset kind')

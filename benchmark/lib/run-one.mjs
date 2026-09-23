@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks'
-import { stateReached, validateTask } from './tasks.mjs'
+import { isBrowserToolName, stateReached, validateTask } from './tasks.mjs'
 
 function round(value) {
   return value === undefined ? undefined : Math.round(value * 100) / 100
@@ -173,7 +173,7 @@ export async function runOne({
         }
         toolCalls.push(call)
         if (typeof call.callId === 'string') openCalls.set(call.callId, { call, receivedAt })
-        if (!call.name.startsWith('browser_')) observerError ??= `forbidden tool called: ${call.name}`
+        if (!isBrowserToolName(call.name)) observerError ??= `forbidden tool called: ${call.name}`
       } else if (event.type === 'tool/result') {
         const callId = event.data?.message?.source?.callId
         const open = openCalls.get(callId)

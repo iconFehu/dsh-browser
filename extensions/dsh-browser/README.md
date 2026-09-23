@@ -12,6 +12,8 @@ Model calls arrive as `capability.call` frames and run inside the extension as `
 
 | Capability | Action | Notes |
 |---|---|---|
+| Read page | `pageAssets.snapshot` / `getText` | Title/URL/main text/numbered inventory/form fields (sensitive values masked); `delta: true` returns only changes |
+| Operate page | `management.tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | Act on snapshot numbers (React/Vue compatible), keys, scrolling, settle detection, and history |
 | Tabs | `management.tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List, open (`active:false` keeps the current tab in front), navigate, follow without activating, reload, or close a listed tab |
 | Browser data (Chrome) | `management.bookmarks.*` / `history.search` / `downloads.list` / `tabGroups.*` | Bookmarks, history, downloads, and tab groups; state-changing calls require approval |
 | Developer observation (Chrome) | `cdp.call` / `cdp.events` | Off by default; enable **Browser developer mode** in Settings. Attaches the debugger to the controlled tab for observation only |
