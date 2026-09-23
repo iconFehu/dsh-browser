@@ -75,6 +75,7 @@ import { FocusedWindowTracker } from './focused-window.ts'
 import { SelectionTracker, type SelectionSource } from './selection.ts'
 import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
 import { ApprovalCoordinator, type ApprovalRequestResult } from './approval-coordinator.ts'
+import { API_TOOL_NAMES, dispatchApiTool } from './api-tools.ts'
 import {
   LEGACY_RECENT_SESSION_STORAGE_KEY,
   PAGE_SESSION_CONTEXT_STORAGE_KEY,
@@ -830,7 +831,7 @@ async function resolveToolTab(sessionId?: string): Promise<Pick<chrome.tabs.Tab,
 }
 
 /**
- * Pick a window for browser_open_tab without requiring an already-controlled page.
+ * Pick a window for management.tabs.open without requiring an already-controlled page.
  * Handoff still blocks: the user must finish the keep/follow choice first.
  */
 async function resolveOpenTabWindow(sessionId?: string): Promise<{ windowId: number } | ToolAnswer> {
@@ -934,7 +935,7 @@ async function refreshFollowedPage(sessionId: string, tabId: number): Promise<vo
       ? undefined
       : { maxItems: caps.maxInteractiveItems, maxChars: caps.snapshotMaxChars }
     const answer = await dispatchToolCall(
-      { id: crypto.randomUUID(), name: 'browser_snapshot', args: {} },
+      { id: crypto.randomUUID(), name: 'pageAssets.snapshot', args: {} },
       unrestrictedAccess ? 'auto' : settings.sharePageContent,
       budget,
       (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, sessionId, unrestrictedAccess),
@@ -1116,7 +1117,7 @@ function routeToolCall(call: ToolCall): void {
   }
   void (isTabManagementTool(call.name)
     ? managementDispatch()
-    : call.name === 'browser_open_tab'
+    : call.name === 'management.tabs.open'
     ? resolveOpenTabWindow(call.sessionId).then((target) => 'ok' in target
       ? target
       : dispatchOpenTab(
@@ -1132,25 +1133,31 @@ function routeToolCall(call: ToolCall): void {
         ))
     : resolveToolTab(call.sessionId).then((target) => 'ok' in target
       ? target
-      : dispatchToolCall(
-          call,
-          sharePageContent,
-          budget,
-          (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId, unrestrictedAccess),
-          controller.signal,
-          target,
-          () => target.id !== undefined && tabAffinity.allowsTarget(target.id, call.sessionId),
-          { unrestrictedAccess, commitAction, rollbackActionCommit },
-        ))
+      : API_TOOL_NAMES.has(call.name)
+        ? dispatchApiTool(
+            call,
+            target.id ?? 0,
+            (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId, unrestrictedAccess),
+          )
+        : dispatchToolCall(
+            call,
+            sharePageContent,
+            budget,
+            (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId, unrestrictedAccess),
+            controller.signal,
+            target,
+            () => target.id !== undefined && tabAffinity.allowsTarget(target.id, call.sessionId),
+            { unrestrictedAccess, commitAction, rollbackActionCommit },
+          ))
   ).then(
     async (answer) => {
       if (activeToolCalls.get(call.id) !== activeCall) return
-      // A committed browser_open_tab already rebound affinity; prefer that
+      // A committed management.tabs.open already rebound affinity; prefer that
       // factual success over a generic cancel that would leave the model wrong.
-      if (controller.signal.aborted && !(call.name === 'browser_open_tab' && answer.ok)) {
+      if (controller.signal.aborted && !(call.name === 'management.tabs.open' && answer.ok)) {
         if (activeToolCalls.get(call.id) === activeCall) {
           bridge?.send({
-            t: 'tool.result',
+            t: 'capability.result',
             id: call.id,
             ok: false,
             error: { code: 'action-failed', message: 'Tool call was cancelled' },
@@ -1163,11 +1170,11 @@ function routeToolCall(call: ToolCall): void {
         if (activeToolCalls.get(call.id) !== activeCall) return
         const socket = bridge
         if (socket === null) return
-        socket.send({ t: 'tool.result', id: call.id, ok: true, result: answer.result })
+        socket.send({ t: 'capability.result', id: call.id, ok: true, result: answer.result })
       } else {
         const socket = bridge
         if (socket === null) return
-        socket.send({ t: 'tool.result', id: call.id, ok: false, error: answer.error! })
+        socket.send({ t: 'capability.result', id: call.id, ok: false, error: answer.error! })
       }
     },
     (error: unknown) => {
@@ -1175,7 +1182,7 @@ function routeToolCall(call: ToolCall): void {
       if (controller.signal.aborted) {
         if (activeToolCalls.get(call.id) === activeCall) {
           bridge?.send({
-            t: 'tool.result',
+            t: 'capability.result',
             id: call.id,
             ok: false,
             error: { code: 'action-failed', message: 'Tool call was cancelled' },
@@ -1184,7 +1191,7 @@ function routeToolCall(call: ToolCall): void {
         return
       }
       bridge?.send({
-        t: 'tool.result',
+        t: 'capability.result',
         id: call.id,
         ok: false,
         error: { code: 'internal', message: error instanceof Error ? error.message : String(error) },
@@ -1268,8 +1275,8 @@ async function startBridge(): Promise<void> {
           transientEvents.ingest(frame)
           broadcastEvent(frame)
         }
-        else if (frame.t === 'tool.call') routeToolCall(frame)
-        else if (frame.t === 'tool.cancel') cancelToolCall(frame.id)
+        else if (frame.t === 'capability.call') routeToolCall({ id: frame.id, name: `${frame.capability}.${frame.method}`, args: frame.args, expiresAt: frame.expiresAt, ...(frame.sessionId === undefined ? {} : { sessionId: frame.sessionId }) })
+        else if (frame.t === 'capability.cancel') cancelToolCall(frame.id)
         else if (frame.t === 'respond.result') interactionResponses.route(frame)
         // rpc.result is settled by the rpc facade (wrapped below).
       },

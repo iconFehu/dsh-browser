@@ -354,9 +354,9 @@ describe('background bridge lifecycle', () => {
     })
 
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'close-after-failed-enable',
-      name: 'browser_close_tab',
+      capability: 'management', method: 'tabs.close',
       args: { tabId: 1 },
       expiresAt: Date.now() + 10_000,
     })
@@ -442,9 +442,9 @@ describe('background bridge lifecycle', () => {
     })
     await Promise.resolve()
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'close-in-flight',
-      name: 'browser_close_tab',
+      capability: 'management', method: 'tabs.close',
       args: { tabId: 1 },
       expiresAt: Date.now() + 10_000,
     })
@@ -466,7 +466,7 @@ describe('background bridge lifecycle', () => {
     finishTabLookup({ id: 1, windowId: 1, title: 'Tab', url: 'https://example.com/' } as chrome.tabs.Tab)
     await vi.waitFor(() => {
       expect(socket.sent).toContainEqual({
-        t: 'tool.result',
+        t: 'capability.result',
         id: 'close-in-flight',
         ok: false,
         error: { code: 'action-failed', message: 'Tool call was cancelled' },
@@ -512,9 +512,9 @@ describe('background bridge lifecycle', () => {
     })
     await Promise.resolve()
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'close-committed',
-      name: 'browser_close_tab',
+      capability: 'management', method: 'tabs.close',
       args: { tabId: 1 },
       expiresAt: Date.now() + 10_000,
     })
@@ -527,7 +527,7 @@ describe('background bridge lifecycle', () => {
     await Promise.resolve()
     expect(chrome.storage.local.set).not.toHaveBeenCalled()
     expect(socket.sent).not.toContainEqual(expect.objectContaining({
-      t: 'tool.result',
+      t: 'capability.result',
       id: 'close-committed',
       ok: false,
     }))
@@ -535,7 +535,7 @@ describe('background bridge lifecycle', () => {
     finishClose()
     await vi.waitFor(() => {
       expect(socket.sent).toContainEqual(expect.objectContaining({
-        t: 'tool.result',
+        t: 'capability.result',
         id: 'close-committed',
         ok: true,
       }))
@@ -580,9 +580,9 @@ describe('background bridge lifecycle', () => {
     })
     await Promise.resolve()
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'close-before-toggle',
-      name: 'browser_close_tab',
+      capability: 'management', method: 'tabs.close',
       args: { tabId: 1 },
       expiresAt: Date.now() + 10_000,
     })
@@ -592,9 +592,9 @@ describe('background bridge lifecycle', () => {
     panel.onMessage.emit({ type: 'settings', id: 'enable-fast', settings: { unrestrictedBrowserAccess: true } })
     await new Promise((resolve) => { setTimeout(resolve, 0) })
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'close-during-revocation',
-      name: 'browser_close_tab',
+      capability: 'management', method: 'tabs.close',
       args: { tabId: 2 },
       expiresAt: Date.now() + 10_000,
     })
@@ -652,9 +652,9 @@ describe('background bridge lifecycle', () => {
     })
     await Promise.resolve()
     originalSocket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'old-close',
-      name: 'browser_close_tab',
+      capability: 'management', method: 'tabs.close',
       args: { tabId: 1 },
       expiresAt: Date.now() + 10_000,
     })
@@ -689,8 +689,8 @@ describe('background bridge lifecycle', () => {
     })
     expect(savedBeforeClose).toBe(false)
 
-    expect(originalSocket.sent).not.toContainEqual(expect.objectContaining({ t: 'tool.result', id: 'old-close' }))
-    expect(replacementSocket.sent).not.toContainEqual(expect.objectContaining({ t: 'tool.result', id: 'old-close' }))
+    expect(originalSocket.sent).not.toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'old-close' }))
+    expect(replacementSocket.sent).not.toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'old-close' }))
   })
 
   it('does not send a navigation result across a reconnect during its checkpoint', async () => {
@@ -723,14 +723,14 @@ describe('background bridge lifecycle', () => {
     original.receive({ t: 'hello.ok', caps: { textOnly: true, snapshotMaxChars: 32_000, maxInteractiveItems: 60 } })
     await Promise.resolve()
     original.receive({
-      t: 'tool.call', id: 'follow-before-reload', name: 'browser_follow_tab',
+      t: 'capability.call', id: 'follow-before-reload', capability: 'management', method: 'tabs.activate',
       sessionId: 'checkpoint-session', args: { tabId: 1 }, expiresAt: Date.now() + 10_000,
     })
     await vi.waitFor(() => {
-      expect(original.sent).toContainEqual(expect.objectContaining({ t: 'tool.result', id: 'follow-before-reload', ok: true }))
+      expect(original.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'follow-before-reload', ok: true }))
     })
     original.receive({
-      t: 'tool.call', id: 'old-reload', name: 'browser_reload',
+      t: 'capability.call', id: 'old-reload', capability: 'management', method: 'tabs.reload',
       sessionId: 'checkpoint-session', args: {}, expiresAt: Date.now() + 10_000,
     })
     await vi.waitFor(() => { expect(checkpointStarted).toBe(true) })
@@ -744,7 +744,7 @@ describe('background bridge lifecycle', () => {
     finishCheckpoint(tab)
     await new Promise((resolve) => { setTimeout(resolve, 0) })
     for (const socket of [original, replacement]) {
-      expect(socket.sent).not.toContainEqual(expect.objectContaining({ t: 'tool.result', id: 'old-reload' }))
+      expect(socket.sent).not.toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'old-reload' }))
     }
   })
 
@@ -781,9 +781,9 @@ describe('background bridge lifecycle', () => {
     })
     await Promise.resolve()
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'recovering-action',
-      name: 'browser_press',
+      capability: 'management', method: 'tabs.press',
       args: { key: 'Enter' },
       expiresAt: Date.now() + 10_000,
     })
@@ -799,7 +799,7 @@ describe('background bridge lifecycle', () => {
     finishInjection()
     await vi.waitFor(() => {
       expect(socket.sent).toContainEqual(expect.objectContaining({
-        t: 'tool.result',
+        t: 'capability.result',
         id: 'recovering-action',
         ok: false,
       }))
@@ -844,9 +844,9 @@ describe('background bridge lifecycle', () => {
     await new Promise((resolve) => { setTimeout(resolve, 0) })
     holdTarget = true
     socket.receive({
-      t: 'tool.call',
+      t: 'capability.call',
       id: 'restricted-across-toggle',
-      name: 'browser_press',
+      capability: 'management', method: 'tabs.press',
       args: { key: 'Enter' },
       expiresAt: Date.now() + 10_000,
     })
@@ -869,7 +869,7 @@ describe('background bridge lifecycle', () => {
     await vi.waitFor(() => { expect(chrome.storage.local.set).toHaveBeenCalledTimes(2) })
     expect(FakeWebSocket.instances).toHaveLength(1)
     expect(socket.sent).not.toContainEqual(expect.objectContaining({
-      t: 'tool.result',
+      t: 'capability.result',
       id: 'restricted-across-toggle',
     }))
 
@@ -880,7 +880,7 @@ describe('background bridge lifecycle', () => {
     })
     await vi.waitFor(() => {
       expect(socket.sent).toContainEqual(expect.objectContaining({
-        t: 'tool.result',
+        t: 'capability.result',
         id: 'restricted-across-toggle',
         ok: true,
       }))
@@ -920,7 +920,7 @@ describe('background bridge lifecycle', () => {
     await vi.waitFor(() => {
       expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({
         type: 'DSH_ACTION',
-        action: 'browser_snapshot',
+        action: 'pageAssets.snapshot',
       }), expect.any(Object))
     })
 

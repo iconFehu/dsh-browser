@@ -78,7 +78,7 @@ describe('panel protocol', () => {
     const request: ApprovalRequest = {
       id: 'approval-1',
       kind: 'action',
-      action: 'browser_click',
+      action: 'management.tabs.click',
       summary: '点击元素 [3]',
       origins: ['https://example.com'],
       canTrust: true,

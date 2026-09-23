@@ -287,12 +287,12 @@ describe('real Loader composition', () => {
 
     // The bridge plugin mounted the browser tool set on the real registry.
     const tools = ctx.get('tools') as ToolRegistry
-    expect(tools.get('browser_snapshot')).toBeDefined()
+    expect(tools.get('pageAssets')).toBeDefined()
 
     const browserPrompt = (await ctx.systemPrompt.assemble()).sections
       .find((section) => section.name === 'tool:bridge-browser')?.text
-    expect(browserPrompt).toContain('page content you have not snapshotted')
-    expect(browserPrompt).toContain('Reuse that injected snapshot')
+    expect(browserPrompt).toContain('eight high-level browser capabilities')
+    expect(browserPrompt).toContain('pageAssets')
     expect(browserPrompt).not.toMatch(/\p{Script=Han}/u)
 
     // Zero-config discovery endpoint answers with the bridge WebSocket URL.
@@ -301,8 +301,8 @@ describe('real Loader composition', () => {
     const config = await configResponse.json() as { wsUrl?: unknown }
     expect(typeof config.wsUrl).toBe('string')
     expect(config.wsUrl).toBe(`ws://127.0.0.1:${port}/ext/bridge`)
-    expect(tools.get('browser_click')).toBeDefined()
-    expect(tools.get('browser_navigate')).toBeDefined()
+    expect(tools.get('management')).toBeDefined()
+    expect(tools.get('cdp')).toBeDefined()
 
     // Zero-config semantics: loopback connections need no token (the
     // non-loopback token gate is covered by server.spec overrides).
@@ -333,12 +333,12 @@ describe('real Loader composition', () => {
   it('unregisters the browser tools when the bridge fiber disposes (HMR safety)', { timeout: 60_000 }, async () => {
     const { ctx, configPath } = await loadComposition()
     const tools = ctx.get('tools') as ToolRegistry
-    expect(tools.get('browser_snapshot')).toBeDefined()
+    expect(tools.get('pageAssets')).toBeDefined()
 
     const bridgeEntry = [...ctx.loader.entries()].find((entry) => entry.options.name === BRIDGE)!
     await bridgeEntry.fiber!.dispose()
-    expect(tools.get('browser_snapshot')).toBeUndefined()
-    expect(tools.get('browser_click')).toBeUndefined()
+    expect(tools.get('pageAssets')).toBeUndefined()
+    expect(tools.get('management')).toBeUndefined()
     // Self-disposing an include-tree entry persists `disabled: true`; await
     // that debounced write so it cannot race the temp-dir removal.
     await expect.poll(async () => (await readFile(configPath, 'utf8')).includes('disabled: true')).toBe(true)

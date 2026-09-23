@@ -108,7 +108,7 @@ export interface BridgeServerDeps {
   pingIntervalMs?: number
 }
 
-/** One in-flight tool call awaiting the extension's `tool.result`. */
+/** One in-flight tool call awaiting the extension's `capability.result`. */
 interface PendingTool {
   resolve: (result: unknown) => void
   reject: (error: BridgeToolError) => void
@@ -212,7 +212,7 @@ export class BridgeServer {
         // The extension may be paused on a user approval after the caller has
         // stopped waiting. Withdraw that approval before settling locally so
         // a late click cannot execute an expired action.
-        sendFrame(conn.ws, { t: 'tool.cancel', id })
+        sendFrame(conn.ws, { t: 'capability.cancel', id })
         settle(error)
       }
       const onAbort = (): void => {
@@ -223,11 +223,20 @@ export class BridgeServer {
       }, timeoutMs)
       signal.addEventListener('abort', onAbort, { once: true })
       this.pendingTools.set(id, { resolve, reject, timer })
+      // `capability` with args `{ method, args }` is the model-facing shape;
+      // `capability.method` names are internal callers addressing one method.
+      const [capability = 'management', ...methodParts] = name.split('.')
+      const highLevel = methodParts.length === 0 && typeof args.method === 'string'
+      const method = highLevel ? String(args.method) : methodParts.join('.')
+      const wireArgs = highLevel && typeof args.args === 'object' && args.args !== null && !Array.isArray(args.args)
+        ? args.args as Record<string, unknown>
+        : highLevel ? {} : args
       conn.ws.send(JSON.stringify({
-        t: 'tool.call',
+        t: 'capability.call',
         id,
-        name,
-        args,
+        capability,
+        method,
+        args: wireArgs,
         expiresAt,
         ...(sessionId === undefined ? {} : { sessionId }),
       } satisfies BridgeFrame), (error) => {
@@ -364,7 +373,7 @@ export class BridgeServer {
       case 'respond':
         void this.handleRespond(frame)
         break
-      case 'tool.result':
+      case 'capability.result':
         this.settleTool(frame.id, frame.ok, frame.ok ? frame.result : frame.error)
         break
       case 'pong':
@@ -373,8 +382,8 @@ export class BridgeServer {
       case 'rpc.result':
       case 'respond.result':
       case 'event':
-      case 'tool.call':
-      case 'tool.cancel':
+      case 'capability.call':
+      case 'capability.cancel':
       case 'ping':
       case 'error':
         // Protocol violations and unsolicited server-side shapes are ignored;

@@ -49,43 +49,43 @@ export interface ContentBudget {
 
 const CONTENT_SCRIPT_FILE = 'content.js'
 const ACTION_DELTA_TOOLS = new Set([
-  'browser_click',
-  'browser_type',
-  'browser_press',
-  'browser_scroll',
-  'browser_wait',
+  'management.tabs.click',
+  'management.tabs.type',
+  'management.tabs.press',
+  'management.tabs.scroll',
+  'management.tabs.wait',
 ])
 const ACTION_DELTA_GUIDANCE = 'The page settled and its current changes are included below. Continue from this state; take another snapshot only when broader page context is needed.'
 const NAVIGATION_CANDIDATE_TOOLS = new Set([
-  'browser_click',
-  'browser_navigate',
-  'browser_back',
-  'browser_forward',
-  'browser_reload',
-  'browser_open_tab',
+  'management.tabs.click',
+  'management.tabs.navigate',
+  'management.tabs.back',
+  'management.tabs.forward',
+  'management.tabs.reload',
+  'management.tabs.open',
 ])
 const TAB_NATIVE_TOOLS = new Set([
-  'browser_snapshot',
-  'browser_navigate',
-  'browser_back',
-  'browser_forward',
-  'browser_reload',
+  'pageAssets.snapshot',
+  'management.tabs.navigate',
+  'management.tabs.back',
+  'management.tabs.forward',
+  'management.tabs.reload',
 ])
 const STATE_CHANGING_PAGE_TOOLS = new Set([
-  'browser_click',
-  'browser_type',
-  'browser_press',
-  'browser_scroll',
-  'browser_navigate',
-  'browser_back',
-  'browser_forward',
-  'browser_reload',
+  'management.tabs.click',
+  'management.tabs.type',
+  'management.tabs.press',
+  'management.tabs.scroll',
+  'management.tabs.navigate',
+  'management.tabs.back',
+  'management.tabs.forward',
+  'management.tabs.reload',
 ])
 /** Tools that operate on the browser tab collection rather than one page document. */
 export const TAB_MANAGEMENT_TOOL_NAMES = new Set([
-  'browser_list_tabs',
-  'browser_follow_tab',
-  'browser_close_tab',
+  'management.tabs.list',
+  'management.tabs.activate',
+  'management.tabs.close',
 ])
 const NAVIGATION_SNAPSHOT_GUIDANCE = 'Navigation completed and the current page snapshot is included below. Use it directly instead of taking an immediate duplicate snapshot.'
 const pendingInjections = new Map<number, Promise<void>>()
@@ -206,7 +206,7 @@ async function dispatchTabNativeTool(
   targetStillAllowed?: () => boolean,
   commitAction?: () => void,
 ): Promise<ToolAnswer | undefined> {
-  if (call.name === 'browser_snapshot') return tabMetadataSnapshot(tabId, windowId, tabTitle, tabUrl, budget.maxChars)
+  if (call.name === 'pageAssets.snapshot') return tabMetadataSnapshot(tabId, windowId, tabTitle, tabUrl, budget.maxChars)
   if (!TAB_NATIVE_TOOLS.has(call.name)) return undefined
   if (isCancelled(call, signal)) return cancelled()
   if (targetStillAllowed?.() === false) return targetChanged()
@@ -215,30 +215,30 @@ async function dispatchTabNativeTool(
   let text: string
   try {
     switch (call.name) {
-      case 'browser_navigate': {
+      case 'management.tabs.navigate': {
         const requested = parseHttpUrl(call.args.url)
         if (requested === undefined) {
           return { ok: false, error: { code: 'action-failed', message: 'url must be a complete http or https URL.' } }
         }
         commitAction?.()
         operation = chrome.tabs.update(tabId, { url: requested.href })
-        text = `Navigating to ${requested.href}. Call browser_snapshot again after the page loads.`
+        text = `Navigating to ${requested.href}. Call pageAssets.snapshot again after the page loads.`
         break
       }
-      case 'browser_back':
+      case 'management.tabs.back':
         commitAction?.()
         operation = chrome.tabs.goBack(tabId)
-        text = 'Navigating through browser history. Call browser_snapshot again after the page loads.'
+        text = 'Navigating through browser history. Call pageAssets.snapshot again after the page loads.'
         break
-      case 'browser_forward':
+      case 'management.tabs.forward':
         commitAction?.()
         operation = chrome.tabs.goForward(tabId)
-        text = 'Navigating through browser history. Call browser_snapshot again after the page loads.'
+        text = 'Navigating through browser history. Call pageAssets.snapshot again after the page loads.'
         break
-      case 'browser_reload':
+      case 'management.tabs.reload':
         commitAction?.()
         operation = chrome.tabs.reload(tabId)
-        text = 'The page is reloading. Call browser_snapshot again after it loads.'
+        text = 'The page is reloading. Call pageAssets.snapshot again after it loads.'
         break
       default:
         return undefined
@@ -399,7 +399,7 @@ function frameHeader(frame: TabFrame): string {
 }
 
 function stripDuplicateSnapshotPrompt(status: string): string {
-  return status.replace(/ Call browser_snapshot again after (?:navigation settles|the page loads|it loads)\.$/, '')
+  return status.replace(/ Call pageAssets.snapshot again after (?:navigation settles|the page loads|it loads)\.$/, '')
 }
 
 async function snapshotAfterNavigation(
@@ -417,7 +417,7 @@ async function snapshotAfterNavigation(
   const answer = await snapshotAllFrames(
     tabId,
     frames,
-    { ...call, name: 'browser_snapshot', args: {} },
+    { ...call, name: 'pageAssets.snapshot', args: {} },
     { ...budget, maxChars: snapshotMaxChars },
   )
   const snapshot = answerText(answer)
@@ -438,13 +438,13 @@ async function dispatchOnce(
 ): Promise<ToolAnswer> {
   if (isCancelled(call, signal)) return cancelled()
   if (targetStillAllowed?.() === false) return targetChanged()
-  if (call.name === 'browser_snapshot') return snapshotAllFrames(tabId, frames, call, budget)
+  if (call.name === 'pageAssets.snapshot') return snapshotAllFrames(tabId, frames, call, budget)
 
   const frameId = requestedFrame(call.args)
   if (frameId < 0) return { ok: false, error: { code: 'action-failed', message: 'frame must be a non-negative integer.' } }
   const frame = frames.find((candidate) => candidate.frameId === frameId)
   if (frame === undefined) {
-    return unavailable(`Frame ${frameId} does not exist or has navigated. Call browser_snapshot again.`)
+    return unavailable(`Frame ${frameId} does not exist or has navigated. Call pageAssets.snapshot again.`)
   }
   // No await occurs between this guard and tabs.sendMessage, so an expired
   // approval cannot cross the final state-changing dispatch boundary.
@@ -500,7 +500,7 @@ async function dispatchOnce(
   } else {
     navigationWait?.cancel()
   }
-  if (call.name === 'browser_get_text') {
+  if (call.name === 'pageAssets.getText') {
     return { ok: true, result: { text: wrapUntrustedContent(text, budget.maxChars) } }
   }
   const pageContent = requestPageDelta ? answerPageContent(response) : undefined
@@ -513,7 +513,8 @@ async function dispatchOnce(
 }
 
 function requestedTabId(args: Record<string, unknown>): number | undefined {
-  const value = args.tabId
+  // management.tabs.close carries `tabIds`; one tab per approval keeps the prompt exact.
+  const value = Array.isArray(args.tabIds) && args.tabIds.length === 1 ? args.tabIds[0] : args.tabId
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
 
@@ -535,7 +536,7 @@ function approvalDisplayUrl(value: string): string {
 
 function tabManagementApproval(call: ToolCall, tab?: chrome.tabs.Tab): ApprovalPrompt {
   const locale = getUiLocale()
-  if (call.name === 'browser_list_tabs') {
+  if (call.name === 'management.tabs.list') {
     return {
       kind: 'read',
       action: call.name,
@@ -550,7 +551,7 @@ function tabManagementApproval(call: ToolCall, tab?: chrome.tabs.Tab): ApprovalP
   return {
     kind: 'action',
     action: call.name,
-    summary: call.name === 'browser_follow_tab'
+    summary: call.name === 'management.tabs.activate'
       ? (locale === 'zh' ? `跟随标签页 ${tab?.id ?? '?'}：${display}` : `Follow tab ${tab?.id ?? '?'}: ${display}`)
       : (locale === 'zh' ? `关闭标签页 ${tab?.id ?? '?'}：${display}` : `Close tab ${tab?.id ?? '?'}: ${display}`),
     origins: origin === undefined ? [] : [origin],
@@ -586,7 +587,7 @@ async function dispatchTabManagementTool(
   signal: AbortSignal | undefined,
   context: TabManagementContext,
 ): Promise<ToolAnswer> {
-  if (call.name === 'browser_list_tabs') {
+  if (call.name === 'management.tabs.list') {
     const approval = tabManagementApproval(call)
     const rejected = await authorizeTabManagement(approval, context.unrestrictedAccess, authorize, call, signal)
     if (rejected !== undefined) return rejected
@@ -612,30 +613,30 @@ async function dispatchTabManagementTool(
 
   const tabId = requestedTabId(call.args)
   if (tabId === undefined) {
-    return { ok: false, error: { code: 'action-failed', message: 'tabId must be a non-negative safe integer returned by browser_list_tabs.' } }
+    return { ok: false, error: { code: 'action-failed', message: 'tabId (or a single-element tabIds) must be a non-negative safe integer returned by management.tabs.list.' } }
   }
   const before = await findTab(tabId)
-  if (before === undefined) return unavailable(`Tab ${tabId} is no longer open. Call browser_list_tabs again.`)
+  if (before === undefined) return unavailable(`Tab ${tabId} is no longer open. Call management.tabs.list again.`)
   const approval = tabManagementApproval(call, before)
   const rejected = await authorizeTabManagement(approval, context.unrestrictedAccess, authorize, call, signal)
   if (rejected !== undefined) return rejected
   const current = await findTab(tabId)
-  if (current === undefined) return unavailable(`Tab ${tabId} closed while approval was pending. Call browser_list_tabs again.`)
+  if (current === undefined) return unavailable(`Tab ${tabId} closed while approval was pending. Call management.tabs.list again.`)
   if (tabUrl(current) !== tabUrl(before)) {
-    return unavailable(`Tab ${tabId} navigated while approval was pending. Call browser_list_tabs again before retrying.`)
+    return unavailable(`Tab ${tabId} navigated while approval was pending. Call management.tabs.list again before retrying.`)
   }
   if (isCancelled(call, signal)) return cancelled()
 
-  if (call.name === 'browser_follow_tab') {
+  if (call.name === 'management.tabs.activate') {
     if (context.followTab === undefined) return unavailable('The browser could not bind the selected tab in this session.')
     context.commitAction?.()
     await context.followTab(current)
     return {
       ok: true,
-      result: { text: `Tab ${tabId} is now the controlled tab. Call browser_snapshot before operating its page.` },
+      result: { text: `Tab ${tabId} is now the controlled tab. Call pageAssets.snapshot before operating its page.` },
     }
   }
-  if (call.name === 'browser_close_tab') {
+  if (call.name === 'management.tabs.close') {
     try {
       context.commitAction?.()
       await chrome.tabs.remove(tabId)
@@ -647,7 +648,7 @@ async function dispatchTabManagementTool(
       ok: true,
       result: {
         text: tabId === context.controlledTabId
-          ? `Closed controlled tab ${tabId}. Call browser_list_tabs and browser_follow_tab before the next page operation.`
+          ? `Closed controlled tab ${tabId}. Call management.tabs.list and management.tabs.activate before the next page operation.`
           : `Closed tab ${tabId}.`,
       },
     }
@@ -678,8 +679,8 @@ export async function dispatchToolCall(
   targetStillAllowed?: () => boolean,
   tabManagement: TabManagementContext = { unrestrictedAccess: false },
 ): Promise<ToolAnswer> {
-  if (call.name === 'browser_open_tab') {
-    return unavailable('browser_open_tab must be dispatched through the background open-tab path.')
+  if (call.name === 'management.tabs.open') {
+    return unavailable('management.tabs.open must be dispatched through the background open-tab path.')
   }
   if (isCancelled(call, signal)) return cancelled()
   const effectiveBudget = budget ?? { maxItems: 60, maxChars: DEFAULT_SNAPSHOT_MAX_CHARS }
@@ -689,7 +690,7 @@ export async function dispatchToolCall(
   // Privacy boundary: with sharing off, no page content may leave the page.
   if (!tabManagement.unrestrictedAccess
     && sharePageContent === 'off'
-    && (call.name === 'browser_snapshot' || call.name === 'browser_get_text')) {
+    && (call.name === 'pageAssets.snapshot' || call.name === 'pageAssets.getText')) {
     return { ok: false, error: { code: 'action-failed', message: 'Page content sharing is disabled in Settings > Page content sharing.' } }
   }
   const tab = targetTab ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]
@@ -728,7 +729,7 @@ export async function dispatchToolCall(
     if (refreshedApproval === undefined
       || !sameApprovalBoundary(approval, refreshedApproval)
       || (approval.kind === 'action' && !sameTargetDocument(call, frames, executionFrames))) {
-      return unavailable('The page changed while approval was pending. Call browser_snapshot again before retrying.')
+      return unavailable('The page changed while approval was pending. Call pageAssets.snapshot again before retrying.')
     }
     const refreshedTargetError = validateElementTarget(call, tab.id, executionFrames)
     if (refreshedTargetError !== undefined) return refreshedTargetError
@@ -752,7 +753,7 @@ export async function dispatchToolCall(
   } catch (error: unknown) {
     if (isCancelled(call, signal)) return cancelled()
     if (!contentScriptReceiverMissing(error)) {
-      return unavailable('The content script stopped responding after the operation was dispatched. Call browser_snapshot before continuing.')
+      return unavailable('The content script stopped responding after the operation was dispatched. Call pageAssets.snapshot before continuing.')
     }
     // Manifest content scripts do not run retroactively in tabs that were
     // already open when an unpacked extension was installed or reloaded.
@@ -776,7 +777,7 @@ export async function dispatchToolCall(
         if (refreshedApproval === undefined
           || !sameApprovalBoundary(approval, refreshedApproval)
           || (approval.kind === 'action' && !sameTargetDocument(call, executionFrames, refreshedFrames))) {
-          return unavailable('The page changed while the content script was loading. Call browser_snapshot again before retrying.')
+          return unavailable('The page changed while the content script was loading. Call pageAssets.snapshot again before retrying.')
         }
       }
       return await dispatchOnce(
@@ -791,28 +792,28 @@ export async function dispatchToolCall(
         tabManagement.rollbackActionCommit,
       )
     } catch {
-      return unavailable('The content script did not answer after it was loaded. Call browser_snapshot again before retrying.')
+      return unavailable('The content script did not answer after it was loaded. Call pageAssets.snapshot again before retrying.')
     }
   }
 }
 
 function validateFrameTarget(call: ToolCall, frames: TabFrame[]): ToolAnswer | undefined {
-  if (call.name === 'browser_snapshot') return undefined
+  if (call.name === 'pageAssets.snapshot') return undefined
   const frameId = requestedFrame(call.args)
   if (frameId < 0) return { ok: false, error: { code: 'action-failed', message: 'frame must be a non-negative integer.' } }
   if (!frames.some((frame) => frame.frameId === frameId)) {
-    return unavailable(`Frame ${frameId} does not exist or has navigated. Call browser_snapshot again.`)
+    return unavailable(`Frame ${frameId} does not exist or has navigated. Call pageAssets.snapshot again.`)
   }
   return undefined
 }
 
 function validateElementTarget(call: ToolCall, tabId: number, frames: TabFrame[]): ToolAnswer | undefined {
-  if (call.name !== 'browser_click' && call.name !== 'browser_type') return undefined
+  if (call.name !== 'management.tabs.click' && call.name !== 'management.tabs.type') return undefined
   const frameId = requestedFrame(call.args)
   const frame = frames.find((candidate) => candidate.frameId === frameId)
   const snapshotted = snapshotDocumentsByTab.get(tabId)?.get(frameId)
   if (frame === undefined || snapshotted === undefined || snapshotted !== frameDocumentKey(frame)) {
-    return unavailable('The element reference does not belong to the current document. Call browser_snapshot again for current frame and index values.')
+    return unavailable('The element reference does not belong to the current document. Call pageAssets.snapshot again for current frame and index values.')
   }
   return undefined
 }
@@ -950,7 +951,7 @@ export async function dispatchOpenTab(
       result: {
         text: sharePageContent === 'off'
           ? `${status} Page content sharing is disabled, so no snapshot was captured.`
-          : `${status} Call browser_snapshot again after the page loads.`,
+          : `${status} Call pageAssets.snapshot again after the page loads.`,
       },
     }
   }
@@ -969,6 +970,6 @@ export async function dispatchOpenTab(
   }
   return {
     ok: true,
-    result: { text: `${status} Call browser_snapshot again after the page loads.` },
+    result: { text: `${status} Call pageAssets.snapshot again after the page loads.` },
   }
 }

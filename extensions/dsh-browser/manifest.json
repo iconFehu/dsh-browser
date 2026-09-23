@@ -13,7 +13,11 @@
     "scripting",
     "webNavigation",
     "alarms",
-    "notifications"
+    "notifications",
+    "downloads",
+    "bookmarks",
+    "history",
+    "tabGroups"
   ],
   "host_permissions": [
     "http://*/*",

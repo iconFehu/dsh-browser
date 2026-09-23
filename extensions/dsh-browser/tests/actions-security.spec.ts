@@ -11,7 +11,7 @@ describe('page action result trust boundary', () => {
     button.scrollIntoView = vi.fn()
     const ids = { elementByIndex: vi.fn(() => button) } as unknown as ElementIds
 
-    await expect(runAction('browser_click', { index: 7 }, {
+    await expect(runAction('management.tabs.click', { index: 7 }, {
       ids,
       budget: { maxItems: 20, maxForms: 10, maxChars: 2_000 },
     })).rejects.toMatchObject({

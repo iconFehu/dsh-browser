@@ -73,7 +73,7 @@ describe('navigation action responses', () => {
     const dispatch = vi.spyOn(link, 'dispatchEvent').mockReturnValue(true)
     const ids = { elementByIndex: vi.fn(() => link) } as unknown as ElementIds
 
-    await expect(runAction('browser_click', { index: 1 }, {
+    await expect(runAction('management.tabs.click', { index: 1 }, {
       ids,
       budget: { maxItems: 20, maxForms: 10, maxChars: 2_000 },
     })).resolves.toMatchObject({
@@ -92,7 +92,7 @@ describe('navigation action responses', () => {
     link.click = vi.fn()
     const ids = { elementByIndex: vi.fn(() => link) } as unknown as ElementIds
 
-    await expect(runAction('browser_click', { index: 1 }, {
+    await expect(runAction('management.tabs.click', { index: 1 }, {
       ids,
       budget: { maxItems: 20, maxForms: 10, maxChars: 2_000 },
     })).resolves.toEqual({ text: expect.stringContaining('outside the controlled frame') })
@@ -110,7 +110,7 @@ describe('navigation action responses', () => {
     link.click = vi.fn()
     const ids = { elementByIndex: vi.fn(() => link) } as unknown as ElementIds
 
-    const result = await runAction('browser_click', { index: 1 }, {
+    const result = await runAction('management.tabs.click', { index: 1 }, {
       ids,
       budget: { maxItems: 20, maxForms: 10, maxChars: 2_000 },
     })
@@ -132,7 +132,7 @@ describe('navigation action responses', () => {
     const dispatch = vi.spyOn(link, 'dispatchEvent')
     const ids = { elementByIndex: vi.fn(() => link) } as unknown as ElementIds
 
-    const result = await runAction('browser_click', { index: 1 }, {
+    const result = await runAction('management.tabs.click', { index: 1 }, {
       ids,
       budget: { maxItems: 20, maxForms: 10, maxChars: 2_000 },
     })

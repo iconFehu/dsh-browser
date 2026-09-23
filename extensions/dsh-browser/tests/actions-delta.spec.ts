@@ -36,9 +36,9 @@ describe('automatic action deltas', () => {
       document.querySelector('main')!.textContent = 'Complete'
     })
     const ids = new ElementIds()
-    await runAction('browser_snapshot', {}, { ids, budget: BUDGET })
+    await runAction('pageAssets.snapshot', {}, { ids, budget: BUDGET })
 
-    const pending = runAction('browser_click', { index: ids.indexOf(button) }, {
+    const pending = runAction('management.tabs.click', { index: ids.indexOf(button) }, {
       ids,
       budget: BUDGET,
       includePageDelta: true,
@@ -55,9 +55,9 @@ describe('automatic action deltas', () => {
     document.body.innerHTML = '<main>Sign in</main><input aria-label="Password" type="password">'
     const input = document.querySelector('input')!
     const ids = new ElementIds()
-    await runAction('browser_snapshot', {}, { ids, budget: BUDGET })
+    await runAction('pageAssets.snapshot', {}, { ids, budget: BUDGET })
 
-    const pending = runAction('browser_type', {
+    const pending = runAction('management.tabs.type', {
       index: ids.indexOf(input),
       text: 'secret-value',
     }, {
@@ -80,9 +80,9 @@ describe('automatic action deltas', () => {
       document.querySelector('main')!.textContent = 'Complete'
     })
     const ids = new ElementIds()
-    await runAction('browser_snapshot', {}, { ids, budget: BUDGET })
+    await runAction('pageAssets.snapshot', {}, { ids, budget: BUDGET })
 
-    const pending = runAction('browser_click', { index: ids.indexOf(button) }, {
+    const pending = runAction('management.tabs.click', { index: ids.indexOf(button) }, {
       ids,
       budget: BUDGET,
       includePageDelta: false,
@@ -101,9 +101,9 @@ describe('automatic action deltas', () => {
       document.querySelector('main')!.textContent = 'Orders'
     })
     const ids = new ElementIds()
-    await runAction('browser_snapshot', {}, { ids, budget: BUDGET })
+    await runAction('pageAssets.snapshot', {}, { ids, budget: BUDGET })
 
-    const pending = runAction('browser_click', { index: ids.indexOf(link) }, {
+    const pending = runAction('management.tabs.click', { index: ids.indexOf(link) }, {
       ids,
       budget: BUDGET,
       includePageDelta: true,

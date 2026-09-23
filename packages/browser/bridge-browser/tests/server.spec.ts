@@ -442,18 +442,19 @@ describe('BridgeServer', () => {
     expect(isLoopbackAddress(undefined)).toBe(false)
   })
 
-  it('dispatches tool calls and resolves on tool.result', async () => {
+  it('dispatches tool calls and resolves on capability.result', async () => {
     const h = await startBridge()
     harnesses.push(h)
     const { ws, frames } = await connect(h.url)
     send(ws, { t: 'hello', token: TOKEN, caps: { textOnly: true, snapshotMaxChars: 12000, maxInteractiveItems: 60 } })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
-    const result = h.bridge.requestTool('browser_click', { index: 1 }, new AbortController().signal)
-    await waitFor(() => frames.some((f) => f.t === 'tool.call'))
-    const call = frames.find((f) => f.t === 'tool.call') as Extract<BridgeFrame, { t: 'tool.call' }>
-    expect(call.name).toBe('browser_click')
+    const result = h.bridge.requestTool('management.tabs.click', { index: 1 }, new AbortController().signal)
+    await waitFor(() => frames.some((f) => f.t === 'capability.call'))
+    const call = frames.find((f) => f.t === 'capability.call') as Extract<BridgeFrame, { t: 'capability.call' }>
+    expect(call.capability).toBe('management')
+    expect(call.method).toBe('tabs.click')
     expect(call.args).toEqual({ index: 1 })
-    send(ws, { t: 'tool.result', id: call.id, ok: true, result: { text: 'clicked' } })
+    send(ws, { t: 'capability.result', id: call.id, ok: true, result: { text: 'clicked' } })
     await expect(result).resolves.toEqual({ text: 'clicked' })
     ws.close()
   })
@@ -466,18 +467,18 @@ describe('BridgeServer', () => {
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
     const abort = new AbortController()
     abort.abort()
-    expect(() => h.bridge.requestTool('browser_click', {}, abort.signal))
+    expect(() => h.bridge.requestTool('management.tabs.click', {}, abort.signal))
       .toThrowError(expect.objectContaining({ code: 'bridge-closed' }))
-    // 没有 tool.call 被发出
+    // 没有 capability.call 被发出
     await new Promise((resolve) => { setTimeout(resolve, 50) })
-    expect(frames.some((f) => f.t === 'tool.call')).toBe(false)
+    expect(frames.some((f) => f.t === 'capability.call')).toBe(false)
     ws.close()
   })
 
   it('rejects tool calls when no extension is connected', async () => {
     const h = await startBridge()
     harnesses.push(h)
-    expect(() => h.bridge.requestTool('browser_click', {}, new AbortController().signal))
+    expect(() => h.bridge.requestTool('management.tabs.click', {}, new AbortController().signal))
       .toThrowError(expect.objectContaining({ code: 'bridge-closed' }))
   })
 
@@ -487,11 +488,11 @@ describe('BridgeServer', () => {
     const { ws, frames } = await connect(h.url)
     send(ws, { t: 'hello', token: TOKEN, caps: { textOnly: true, snapshotMaxChars: 12000, maxInteractiveItems: 60 } })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
-    await expect(h.bridge.requestTool('browser_wait', {}, new AbortController().signal, 30))
+    await expect(h.bridge.requestTool('management.tabs.wait', {}, new AbortController().signal, 30))
       .rejects.toMatchObject({ code: 'timeout' })
-    await waitFor(() => frames.some((frame) => frame.t === 'tool.cancel'))
-    const call = frames.find((frame) => frame.t === 'tool.call') as Extract<BridgeFrame, { t: 'tool.call' }>
-    expect(frames).toContainEqual({ t: 'tool.cancel', id: call.id })
+    await waitFor(() => frames.some((frame) => frame.t === 'capability.cancel'))
+    const call = frames.find((frame) => frame.t === 'capability.call') as Extract<BridgeFrame, { t: 'capability.call' }>
+    expect(frames).toContainEqual({ t: 'capability.cancel', id: call.id })
     ws.close()
   })
 
@@ -501,10 +502,10 @@ describe('BridgeServer', () => {
     const { ws, frames } = await connect(h.url)
     send(ws, { t: 'hello', token: TOKEN, caps: { textOnly: true, snapshotMaxChars: 12000, maxInteractiveItems: 60 } })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
-    const result = h.bridge.requestTool('browser_navigate', { url: 'https://x' }, new AbortController().signal)
-    await waitFor(() => frames.some((f) => f.t === 'tool.call'))
-    const call = frames.find((f) => f.t === 'tool.call') as Extract<BridgeFrame, { t: 'tool.call' }>
-    send(ws, { t: 'tool.result', id: call.id, ok: false, error: { code: 'action-failed', message: 'blocked' } })
+    const result = h.bridge.requestTool('management.tabs.navigate', { url: 'https://x' }, new AbortController().signal)
+    await waitFor(() => frames.some((f) => f.t === 'capability.call'))
+    const call = frames.find((f) => f.t === 'capability.call') as Extract<BridgeFrame, { t: 'capability.call' }>
+    send(ws, { t: 'capability.result', id: call.id, ok: false, error: { code: 'action-failed', message: 'blocked' } })
     await expect(result).rejects.toBeInstanceOf(BridgeToolError)
     await expect(result).rejects.toMatchObject({ code: 'action-failed', message: 'blocked' })
     ws.close()
@@ -516,10 +517,10 @@ describe('BridgeServer', () => {
     const first = await connect(h.url)
     send(first.ws, { t: 'hello', token: TOKEN, caps: { textOnly: true, snapshotMaxChars: 12000, maxInteractiveItems: 60 } })
     await waitFor(() => first.frames.some((f) => f.t === 'hello.ok'))
-    const pending = h.bridge.requestTool('browser_click', {}, new AbortController().signal)
+    const pending = h.bridge.requestTool('management.tabs.click', {}, new AbortController().signal)
     // Attach the assertion eagerly: the replacement below settles it before the final await.
     const pendingAssertion = expect(pending).rejects.toMatchObject({ code: 'bridge-closed' })
-    await waitFor(() => first.frames.some((f) => f.t === 'tool.call'))
+    await waitFor(() => first.frames.some((f) => f.t === 'capability.call'))
 
     const second = await connect(h.url)
     send(second.ws, { t: 'hello', token: TOKEN, caps: { textOnly: true, snapshotMaxChars: 12000, maxInteractiveItems: 60 } })
@@ -537,13 +538,13 @@ describe('BridgeServer', () => {
     send(ws, { t: 'hello', token: TOKEN, caps: { textOnly: true, snapshotMaxChars: 12000, maxInteractiveItems: 60 } })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
     const abort = new AbortController()
-    const pending = h.bridge.requestTool('browser_click', {}, abort.signal)
-    await waitFor(() => frames.some((f) => f.t === 'tool.call'))
-    const call = frames.find((frame) => frame.t === 'tool.call') as Extract<BridgeFrame, { t: 'tool.call' }>
+    const pending = h.bridge.requestTool('management.tabs.click', {}, abort.signal)
+    await waitFor(() => frames.some((f) => f.t === 'capability.call'))
+    const call = frames.find((frame) => frame.t === 'capability.call') as Extract<BridgeFrame, { t: 'capability.call' }>
     abort.abort()
     await expect(pending).rejects.toMatchObject({ code: 'bridge-closed' })
-    await waitFor(() => frames.some((frame) => frame.t === 'tool.cancel'))
-    expect(frames).toContainEqual({ t: 'tool.cancel', id: call.id })
+    await waitFor(() => frames.some((frame) => frame.t === 'capability.cancel'))
+    expect(frames).toContainEqual({ t: 'capability.cancel', id: call.id })
     ws.close()
   })
 
@@ -554,16 +555,16 @@ describe('BridgeServer', () => {
     send(ws, { t: 'hello', token: TOKEN, caps: CAPS })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
     const pending = h.bridge.requestTool(
-      'browser_click',
+      'management.tabs.click',
       {},
       new AbortController().signal,
       1_000,
       'session-browser',
     )
-    await waitFor(() => frames.some((f) => f.t === 'tool.call'))
-    const call = frames.find((frame) => frame.t === 'tool.call') as Extract<BridgeFrame, { t: 'tool.call' }>
+    await waitFor(() => frames.some((f) => f.t === 'capability.call'))
+    const call = frames.find((frame) => frame.t === 'capability.call') as Extract<BridgeFrame, { t: 'capability.call' }>
     expect(call.sessionId).toBe('session-browser')
-    send(ws, { t: 'tool.result', id: call.id, ok: true, result: { text: 'done' } })
+    send(ws, { t: 'capability.result', id: call.id, ok: true, result: { text: 'done' } })
     await expect(pending).resolves.toEqual({ text: 'done' })
     ws.close()
   })
@@ -585,7 +586,7 @@ describe('BridgeServer', () => {
     const { ws, frames } = await connect(h.url)
     send(ws, { t: 'hello', token: TOKEN, caps: CAPS })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
-    const pending = h.bridge.requestTool('browser_click', {}, new AbortController().signal)
+    const pending = h.bridge.requestTool('management.tabs.click', {}, new AbortController().signal)
     // Tear the socket down immediately: the in-flight send reports a write
     // failure (or the close path wins — either settles as bridge-closed).
     const assertion = expect(pending).rejects.toMatchObject({ code: 'bridge-closed' })
@@ -635,12 +636,12 @@ describe('BridgeServer', () => {
     const { ws, frames } = await connect(h.url)
     send(ws, { t: 'hello', token: TOKEN, caps: CAPS })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
-    const pending = h.bridge.requestTool('browser_click', {}, new AbortController().signal)
+    const pending = h.bridge.requestTool('management.tabs.click', {}, new AbortController().signal)
     // Attach the assertion eagerly: close() settles it before the final await.
     const pendingAssertion = expect(pending).rejects.toMatchObject({ code: 'bridge-closed' })
     await h.bridge.close()
     await pendingAssertion
-    expect(() => h.bridge.requestTool('browser_click', {}, new AbortController().signal))
+    expect(() => h.bridge.requestTool('management.tabs.click', {}, new AbortController().signal))
       .toThrowError(expect.objectContaining({ code: 'bridge-closed' }))
     ws.close()
   })
@@ -717,7 +718,7 @@ describe('BridgeServer', () => {
     send(ws, { t: 'hello', token: TOKEN, caps: CAPS })
     await waitFor(() => frames.some((f) => f.t === 'hello.ok'))
     // Unknown id: ignored, connection stays healthy.
-    send(ws, { t: 'tool.result', id: 'nope', ok: true, result: {} })
+    send(ws, { t: 'capability.result', id: 'nope', ok: true, result: {} })
     await new Promise((resolve) => { setTimeout(resolve, 50) })
     expect(ws.readyState).toBe(WebSocket.OPEN)
     ws.close()

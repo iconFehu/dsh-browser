@@ -5,16 +5,16 @@ import type { TabFrame } from './frames.ts'
 import type { ApprovalPrompt } from '../security/approval.ts'
 import { getUiLocale, type UiLocale } from '../i18n.ts'
 
-const PAGE_READS = new Set(['browser_snapshot', 'browser_get_text'])
+const PAGE_READS = new Set(['pageAssets.snapshot', 'pageAssets.getText'])
 const STATE_CHANGING_ACTIONS = new Set([
-  'browser_click',
-  'browser_type',
-  'browser_press',
-  'browser_navigate',
-  'browser_open_tab',
-  'browser_back',
-  'browser_forward',
-  'browser_reload',
+  'management.tabs.click',
+  'management.tabs.type',
+  'management.tabs.press',
+  'management.tabs.navigate',
+  'management.tabs.open',
+  'management.tabs.back',
+  'management.tabs.forward',
+  'management.tabs.reload',
 ])
 
 /** Return an approval prompt, or undefined when this call needs no prompt. */
@@ -26,13 +26,13 @@ export function approvalPromptForCall(
 ): ApprovalPrompt | undefined {
   if (PAGE_READS.has(call.name)) {
     if (sharePageContent !== 'ask') return undefined
-    const targetFrames = call.name === 'browser_snapshot'
+    const targetFrames = call.name === 'pageAssets.snapshot'
       ? frames
       : frames.filter((frame) => frame.frameId === requestedFrame(call.args))
     return {
       kind: 'read',
       action: call.name,
-      summary: call.name === 'browser_snapshot'
+      summary: call.name === 'pageAssets.snapshot'
         ? localized(locale, 'Read the current page and accessible iframes', '读取当前页面及可访问 iframe')
         : localized(locale, 'Read text from the specified area of the current page', '读取当前页面的指定文本区域'),
       origins: uniqueOrigins(targetFrames, frames),
@@ -41,7 +41,7 @@ export function approvalPromptForCall(
   }
 
   if (!STATE_CHANGING_ACTIONS.has(call.name)) return undefined
-  if (call.name === 'browser_open_tab') {
+  if (call.name === 'management.tabs.open') {
     const destination = originFromUrl(typeof call.args.url === 'string' ? call.args.url : '')
     return {
       kind: 'action',
@@ -55,8 +55,8 @@ export function approvalPromptForCall(
   const frameId = requestedFrame(call.args)
   const target = frames.find((frame) => frame.frameId === frameId) ?? frames.find((frame) => frame.frameId === 0)
   const origins = uniqueOrigins(target === undefined ? [] : [target], frames)
-  let canTrust = origins.length === 1 && call.name !== 'browser_back' && call.name !== 'browser_forward'
-  if (call.name === 'browser_navigate') {
+  let canTrust = origins.length === 1 && call.name !== 'management.tabs.back' && call.name !== 'management.tabs.forward'
+  if (call.name === 'management.tabs.navigate') {
     const destination = originFromUrl(typeof call.args.url === 'string' ? call.args.url : '')
     if (destination !== undefined && !origins.includes(destination)) origins.push(destination)
     // Do not let an invalid, opaque, or cross-origin navigation become a
@@ -112,8 +112,8 @@ function summarizeAction(call: ToolCall, locale: UiLocale): string {
     : ''
   const index = typeof call.args.index === 'number' ? call.args.index : '?'
   switch (call.name) {
-    case 'browser_click': return localized(locale, `Click element [${index}]${frame}`, `点击元素 [${index}]${frame}`)
-    case 'browser_type': {
+    case 'management.tabs.click': return localized(locale, `Click element [${index}]${frame}`, `点击元素 [${index}]${frame}`)
+    case 'management.tabs.type': {
       const length = typeof call.args.text === 'string' ? call.args.text.length : 0
       return localized(
         locale,
@@ -121,17 +121,17 @@ function summarizeAction(call: ToolCall, locale: UiLocale): string {
         `向元素 [${index}] 输入 ${length} 个字符${frame}（文本内容不会显示在确认框）`,
       )
     }
-    case 'browser_press': return localized(
+    case 'management.tabs.press': return localized(
       locale,
       `Press “${safeInline(typeof call.args.key === 'string' ? call.args.key : '')}”${frame}`,
       `发送按键「${safeInline(typeof call.args.key === 'string' ? call.args.key : '')}」${frame}`,
     )
-    case 'browser_navigate': return localized(
+    case 'management.tabs.navigate': return localized(
       locale,
       `Navigate to ${displayUrl(typeof call.args.url === 'string' ? call.args.url : '', locale)}`,
       `导航到 ${displayUrl(typeof call.args.url === 'string' ? call.args.url : '', locale)}`,
     )
-    case 'browser_open_tab': {
+    case 'management.tabs.open': {
       const destination = displayUrl(typeof call.args.url === 'string' ? call.args.url : '', locale)
       return call.args.active === false
         ? localized(
@@ -145,9 +145,9 @@ function summarizeAction(call: ToolCall, locale: UiLocale): string {
           `在新标签页打开 ${destination}`,
         )
     }
-    case 'browser_back': return localized(locale, 'Go back in browser history (destination domain unknown)', '返回浏览历史上一页（目标域名未知）')
-    case 'browser_forward': return localized(locale, 'Go forward in browser history (destination domain unknown)', '前进到浏览历史下一页（目标域名未知）')
-    case 'browser_reload': return localized(locale, 'Reload the current page', '重新加载当前页面')
+    case 'management.tabs.back': return localized(locale, 'Go back in browser history (destination domain unknown)', '返回浏览历史上一页（目标域名未知）')
+    case 'management.tabs.forward': return localized(locale, 'Go forward in browser history (destination domain unknown)', '前进到浏览历史下一页（目标域名未知）')
+    case 'management.tabs.reload': return localized(locale, 'Reload the current page', '重新加载当前页面')
     default: return call.name
   }
 }

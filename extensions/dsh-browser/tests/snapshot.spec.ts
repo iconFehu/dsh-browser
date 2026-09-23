@@ -58,7 +58,7 @@ describe('buildSnapshot', () => {
     const secondText = renderSnapshot(second, true)
     expect(secondText).toContain('Changed interactive elements:')
     expect(secondText).toContain('甲已改名')
-    expect(secondText).not.toContain('Call browser_snapshot again')
+    expect(secondText).not.toContain('Call pageAssets.snapshot again')
 
     document.getElementById('b')!.remove()
     const third = buildSnapshot(ids, { delta: true, budget: BUDGET }, second)

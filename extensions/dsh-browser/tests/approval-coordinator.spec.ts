@@ -5,7 +5,7 @@ import { ApprovalCoordinator } from '../src/background/approval-coordinator.ts'
 
 const PROMPT = {
   kind: 'action' as const,
-  action: 'browser_click',
+  action: 'management.tabs.click',
   summary: 'Click element [3]',
   origins: ['https://example.com'],
   canTrust: true,

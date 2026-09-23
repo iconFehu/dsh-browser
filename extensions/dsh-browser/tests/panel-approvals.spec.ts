@@ -7,7 +7,7 @@ import { approvalReadyForSession, approvalSessionToFocus } from '../src/panel/ap
 const request: ApprovalRequest = {
   id: 'approval-1',
   kind: 'action',
-  action: 'browser_click',
+  action: 'management.tabs.click',
   summary: 'Click element [3]',
   origins: ['https://example.com'],
   canTrust: true,

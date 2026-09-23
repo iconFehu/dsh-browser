@@ -42,7 +42,7 @@ export function originMatchesTrusted(origin: string, trusted: Iterable<string>):
 
 /**
  * Skip an action prompt only when its full destination boundary is known.
- * Cross-origin browser_navigate names both origins; history and invalid URLs
+ * Cross-origin management.tabs.navigate names both origins; history and invalid URLs
  * deliberately remain untrusted because their destination is not represented.
  */
 export function actionCoveredByTrustedOrigins(
@@ -51,8 +51,8 @@ export function actionCoveredByTrustedOrigins(
 ): boolean {
   if (prompt.kind !== 'action' || prompt.origins.length === 0) return false
   const hasKnownBoundary = prompt.canTrust
-    || (prompt.action === 'browser_navigate' && prompt.origins.length > 1)
-    || (prompt.action === 'browser_open_tab' && prompt.origins.length === 1)
+    || (prompt.action === 'management.tabs.navigate' && prompt.origins.length > 1)
+    || (prompt.action === 'management.tabs.open' && prompt.origins.length === 1)
   if (!hasKnownBoundary) return false
   return prompt.origins.every((origin) =>
     trustedCollections.some((trusted) => originMatchesTrusted(origin, trusted)))
