@@ -78,6 +78,8 @@ export interface PanelCopy {
     approvalNotificationsHelp: string
     autoResumeSession: string
     autoResumeSessionHelp: string
+    cdpEnabled: string
+    cdpEnabledHelp: string
     trustedOrigins: string
     trustedOriginsHelp: string
     trustedOriginInput: string
@@ -308,6 +310,8 @@ const EN: PanelCopy = {
     approvalNotificationsHelp: 'Notify you when an approval arrives while the side panel is closed',
     autoResumeSession: "Resume this page's conversation",
     autoResumeSessionHelp: 'Reopen the conversation associated with this tab and page path; other pages start a new conversation',
+    cdpEnabled: 'Browser developer mode (full CDP, Chrome)',
+    cdpEnabledHelp: 'Lets the assistant observe the controlled tab through Chrome DevTools Protocol: deep DOM and shadow/frame reading, console and Log, network requests and response bodies, performance metrics, PDF export, and screenshots. It can expose sensitive page and network data, and attaching pauses your own DevTools on that tab. Leave it off unless you are debugging, and turn it back off afterwards.',
     trustedOrigins: 'Always-allowed domains',
     trustedOriginsHelp: 'The approval dialog can trust a domain for the current side-panel session only. Domains added here permanently skip action confirmation when every known origin is trusted. Wildcards include the base domain and subdomains, and stay scoped to their scheme and port; `*.example.com` defaults to HTTPS.',
     trustedOriginInput: 'Domain to always trust (e.g. https://example.com or https://*.example.com)',
@@ -538,6 +542,8 @@ const ZH: PanelCopy = {
     approvalNotificationsHelp: '侧栏关闭时收到审批请求，通过系统通知提醒你',
     autoResumeSession: '续接当前页面会话',
     autoResumeSessionHelp: '重新打开当前标签页此页面的会话；其他页面会新建会话',
+    cdpEnabled: '浏览器开发者模式（完整 CDP，Chrome）',
+    cdpEnabledHelp: '允许助手用 Chrome DevTools Protocol 观察受控标签页：深层 DOM 与 shadow/frame 读取、console 与 Log、网络请求与响应体、性能指标、PDF 导出和截图。它会暴露敏感的页面与网络数据，附加期间还会暂停该标签页你自己的 DevTools。除非在调试，否则请保持关闭，用完后关闭。',
     trustedOrigins: '永久免确认域名',
     trustedOriginsHelp: '审批框可只信任本次侧栏会话。这里添加的域名仅在所有已知来源均受信任时免除操作确认。通配符包含主域及其子域，并严格区分协议和端口；`*.example.com` 默认使用 HTTPS。',
     trustedOriginInput: '要永久信任的域名（如 https://example.com 或 https://*.example.com）',

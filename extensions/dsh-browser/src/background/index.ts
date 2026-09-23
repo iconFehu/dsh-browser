@@ -76,6 +76,8 @@ import { SelectionTracker, type SelectionSource } from './selection.ts'
 import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
 import { ApprovalCoordinator, type ApprovalRequestResult } from './approval-coordinator.ts'
 import { API_TOOL_NAMES, dispatchApiTool } from './api-tools.ts'
+import { cdpObservation } from './cdp/instance.ts'
+import { CDP_OBSERVATION_TOOLS, dispatchCdpObservation, resolveCdpCall } from './cdp/tools.ts'
 import {
   LEGACY_RECENT_SESSION_STORAGE_KEY,
   PAGE_SESSION_CONTEXT_STORAGE_KEY,
@@ -95,6 +97,14 @@ export interface Settings {
   approvalNotifications: boolean
   /** Restore the current tab and page path's conversation when the panel reopens. */
   autoResumeSession: boolean
+  /**
+   * Browser developer mode (Chrome): attach CDP to the controlled tab for
+   * observation (deep DOM reading, console/Log/network diagnostics, response
+   * bodies, performance, PDF, screenshots). Off by default: it can expose
+   * sensitive browser and page data, and attaching pauses the user's own
+   * DevTools on that tab.
+   */
+  cdpEnabled: boolean
 }
 
 const SETTINGS_DEFAULTS: Settings = {
@@ -106,6 +116,7 @@ const SETTINGS_DEFAULTS: Settings = {
   trustedActionOrigins: [],
   approvalNotifications: true,
   autoResumeSession: true,
+  cdpEnabled: false,
 }
 
 /**
@@ -268,6 +279,7 @@ async function persistSettings(next: Partial<Settings>): Promise<void> {
   const updated = normalizeSettings({ ...settings, ...next })
   const revokesUnrestrictedAccess = settings.unrestrictedBrowserAccess && !updated.unrestrictedBrowserAccess
   settings = updated
+  cdpObservation.setDeveloperMode(updated.cdpEnabled)
   if (!updated.unrestrictedBrowserAccess) unrestrictedAccessActive = false
   syncSelectionWatch()
   let accessTransition: Promise<void> | undefined
@@ -314,6 +326,7 @@ function normalizeSettings(candidate: Settings): Settings {
     trustedActionOrigins: trusted,
     approvalNotifications: candidate.approvalNotifications !== false,
     autoResumeSession: candidate.autoResumeSession !== false,
+    cdpEnabled: candidate.cdpEnabled === true,
   }
 }
 
@@ -323,6 +336,7 @@ const settingsReady = loadSettings().then((loaded) => {
   settings = loaded
   unrestrictedAccessActive = loaded.unrestrictedBrowserAccess
   settingsLoaded = true
+  cdpObservation.setDeveloperMode(loaded.cdpEnabled)
 })
 
 function armBridgeKeepalive(): void {
@@ -1055,7 +1069,28 @@ async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> 
   }
 }
 
-/** Route one tool.call frame to the user-approved controlled tab. */
+/** Run a `cdp.*` call through the observation layer; unknown CDP methods fail closed. */
+function dispatchCdpCall(
+  call: ToolCall,
+  target: Pick<chrome.tabs.Tab, 'id' | 'url' | 'windowId'>,
+  sharePageContent: Settings['sharePageContent'],
+  signal: AbortSignal,
+  unrestrictedAccess: boolean,
+): Promise<ToolAnswer> {
+  const observation = resolveCdpCall(call)
+  if (observation === undefined || !CDP_OBSERVATION_TOOLS.has(observation.name)) {
+    return Promise.resolve({ ok: false, error: { code: 'action-failed', message: `Unsupported CDP request: ${call.name}${typeof call.args.method === 'string' ? ` ${call.args.method}` : ''}` } })
+  }
+  return dispatchCdpObservation(observation, {
+    manager: cdpObservation,
+    tab: target,
+    sharePageContent,
+    authorize: (prompt) => authorizeToolCall(prompt, signal, target.windowId, call.sessionId, unrestrictedAccess),
+    signal,
+  })
+}
+
+/** Route one capability.call frame to the user-approved controlled tab. */
 function routeToolCall(call: ToolCall): void {
   if (bridge === null) return
   activeToolCalls.get(call.id)?.controller.abort()
@@ -1139,6 +1174,8 @@ function routeToolCall(call: ToolCall): void {
             target.id ?? 0,
             (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId, unrestrictedAccess),
           )
+        : call.name.startsWith('cdp.')
+        ? dispatchCdpCall(call, target, sharePageContent, controller.signal, unrestrictedAccess)
         : dispatchToolCall(
             call,
             sharePageContent,
@@ -1334,6 +1371,7 @@ chrome.runtime.onConnect.addListener((port) => {
     timer: ReturnType<typeof setTimeout>
   }>()
   panelPorts.add(port)
+  cdpObservation.setPanelActive(true)
   if (wasIdle) armBridgeKeepalive()
   void settingsReady.then(syncSelectionWatch)
   void settingsReady.then(() => {
@@ -1609,6 +1647,7 @@ chrome.runtime.onConnect.addListener((port) => {
       bridgeStartRevision += 1
       bridge?.suspendReconnect()
       sessionTrustedActionOrigins.clear()
+      cdpObservation.setPanelActive(false)
       approvals.notifyPending()
       if (bridge?.state !== 'connected') disarmBridgeKeepalive()
     }
@@ -1642,6 +1681,10 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
 })
 
 chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
+  // A controlled tab that navigates off http(s) can no longer host CDP.
+  if (cdpObservation.attachedTab() === tabId && tab.url !== undefined && !/^https?:\/\//i.test(tab.url)) {
+    void cdpObservation.retract()
+  }
   void affinityReady.then(() => {
     if (!tabAffinity.tracks(tabId)) return
     const summary = summarizeTab(tab)
@@ -1651,6 +1694,7 @@ chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
 
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
   // The old document is gone even though Chrome transfers the tab identity.
+  if (cdpObservation.attachedTab() === removedTabId) void cdpObservation.retract()
   broadcastSelections(selections.clearTab(removedTabId))
   void pageSessionContexts.ready.then(() => {
     pageSessionContexts.replaceTab(removedTabId, addedTabId)
@@ -1677,6 +1721,7 @@ chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  if (cdpObservation.attachedTab() === tabId) void cdpObservation.retract()
   broadcastSelections(selections.clearTab(tabId))
   void pageSessionContexts.ready.then(() => {
     pageSessionContexts.removeTab(tabId)

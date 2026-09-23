@@ -5,7 +5,17 @@ import type { TabFrame } from './frames.ts'
 import type { ApprovalPrompt } from '../security/approval.ts'
 import { getUiLocale, type UiLocale } from '../i18n.ts'
 
-const PAGE_READS = new Set(['pageAssets.snapshot', 'pageAssets.getText'])
+const PAGE_READS = new Set([
+  'pageAssets.snapshot',
+  'pageAssets.getText',
+  // CDP observation reads share the read-sharing policy.
+  'cdp.diagnostics',
+  'cdp.network',
+  'cdp.performance',
+  'cdp.dom',
+  'cdp.captureScreenshot',
+  'cdp.exportPdf',
+])
 const STATE_CHANGING_ACTIONS = new Set([
   'management.tabs.click',
   'management.tabs.type',
