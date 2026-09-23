@@ -176,7 +176,7 @@ export function stateReached(instance, state) {
 }
 
 /** The extension backend's capability tools (bridge-browser `BROWSER_TOOL_NAMES`). */
-const BROWSER_CAPABILITY_TOOLS = new Set(['botDetection', 'browserAuth', 'cdp', 'management', 'pageAssets', 'viewport', 'visibility', 'webmcp'])
+const BROWSER_CAPABILITY_TOOLS = new Set(['botDetection', 'browserAuth', 'cdp', 'management', 'pageAssets', 'viewport', 'visibility'])
 
 /** Browser tools are the Playwright baseline's `browser_*` set or the extension's capability tools. */
 export function isBrowserToolName(name) {

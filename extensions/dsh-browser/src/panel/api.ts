@@ -93,7 +93,17 @@ interface SessionResumeHintMessage {
   sessionId: string | null
 }
 
-type BackgroundMessage = RpcResultMessage | RespondResultMessage | SettingsResultMessage | StatusMessage | EventMessage | ApprovalRequestMessage | ApprovalResolvedMessage | TabAffinityMessage | TabAffinityRebindResultMessage | SelectionMessage | SessionResumeHintMessage | BrowserTabsMessage
+/** The model reported that the controlled page is blocked by bot detection. */
+export interface BotDetectionNotice {
+  reason: string
+  hostname: string | null
+}
+
+interface BotDetectionMessage extends BotDetectionNotice {
+  type: 'bot-detection'
+}
+
+type BackgroundMessage = RpcResultMessage | RespondResultMessage | SettingsResultMessage | StatusMessage | EventMessage | ApprovalRequestMessage | ApprovalResolvedMessage | TabAffinityMessage | TabAffinityRebindResultMessage | SelectionMessage | SessionResumeHintMessage | BrowserTabsMessage | BotDetectionMessage
 type BrowserTabsMessage = { type: 'browser-tabs'; tabs: BrowserTabRef[] }
 
 /** Structured gateway failure retained for product-level error handling. */
@@ -127,6 +137,7 @@ export interface PanelApi {
   onTabAffinity(callback: (state: TabAffinityState) => void): () => void
   onSelection(callback: (selection: PageSelection | null) => void): () => void
   onSessionResumeHint(callback: (sessionId: string | null) => void): () => void
+  onBotDetection?: (callback: (notice: BotDetectionNotice) => void) => () => void
   respondToApproval(id: string, decision: ApprovalDecision): Promise<void>
   resolveTabAffinity(revision: number, decision: TabAffinityDecision, sessionId: string | null): Promise<void>
   rebindTabAffinity(): Promise<void>
@@ -166,6 +177,7 @@ export function connectPanel(): PanelApi {
   const selectionListeners = new Set<(selection: PageSelection | null) => void>()
   const sessionResumeHintListeners = new Set<(sessionId: string | null) => void>()
   const browserTabsListeners = new Set<(tabs: BrowserTabRef[]) => void>()
+  const botDetectionListeners = new Set<(notice: BotDetectionNotice) => void>()
 
   let port: chrome.runtime.Port | null = null
   let reconnectPromise: Promise<chrome.runtime.Port> | null = null
@@ -242,6 +254,9 @@ export function connectPanel(): PanelApi {
       }
       case 'session.resume-hint':
         for (const listener of sessionResumeHintListeners) listener(msg.sessionId)
+        break
+      case 'bot-detection':
+        for (const listener of botDetectionListeners) listener({ reason: msg.reason, hostname: msg.hostname })
         break
       case 'browser-tabs':
         for (const listener of browserTabsListeners) listener((msg as BrowserTabsMessage).tabs)
@@ -417,6 +432,10 @@ export function connectPanel(): PanelApi {
     onSessionResumeHint(callback) {
       sessionResumeHintListeners.add(callback)
       return () => { sessionResumeHintListeners.delete(callback) }
+    },
+    onBotDetection(callback) {
+      botDetectionListeners.add(callback)
+      return () => { botDetectionListeners.delete(callback) }
     },
     onBrowserTabs(callback) { browserTabsListeners.add(callback); return () => { browserTabsListeners.delete(callback) } },
     listBrowserTabs() {

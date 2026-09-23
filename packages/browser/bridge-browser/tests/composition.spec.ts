@@ -291,7 +291,7 @@ describe('real Loader composition', () => {
 
     const browserPrompt = (await ctx.systemPrompt.assemble()).sections
       .find((section) => section.name === 'tool:bridge-browser')?.text
-    expect(browserPrompt).toContain('eight high-level browser capabilities')
+    expect(browserPrompt).toContain('seven high-level browser capabilities')
     expect(browserPrompt).toContain('pageAssets')
     expect(browserPrompt).not.toMatch(/\p{Script=Han}/u)
 

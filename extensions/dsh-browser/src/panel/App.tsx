@@ -465,7 +465,9 @@ function ApprovalDialog({
           <span className="approval-shield"><ShieldIcon /></span>
           <div>
             <span className="eyebrow">{copy.approval.eyebrow}</span>
-            <h2 id="approval-title">{request.kind === 'read' ? copy.approval.readTitle : copy.approval.actionTitle}</h2>
+            <h2 id="approval-title">{request.kind === 'read'
+              ? copy.approval.readTitle
+              : request.kind === 'handoff' ? copy.approval.handoffTitle : copy.approval.actionTitle}</h2>
           </div>
         </div>
         <div className="approval-detail">
@@ -479,8 +481,12 @@ function ApprovalDialog({
             : request.origins.map((origin) => <code key={origin}>{origin}</code>)}
         </div>
         <div className="approval-actions">
-          <button className="deny" autoFocus onClick={() => onDecision('deny')}>{copy.approval.deny}</button>
-          <button className="allow" onClick={() => onDecision('allow-once')}>{copy.approval.allowOnce}</button>
+          <button className="deny" autoFocus onClick={() => onDecision('deny')}>
+            {request.kind === 'handoff' ? copy.approval.handoffDecline : copy.approval.deny}
+          </button>
+          <button className="allow" onClick={() => onDecision('allow-once')}>
+            {request.kind === 'handoff' ? copy.approval.handoffDone : copy.approval.allowOnce}
+          </button>
           {request.kind === 'read' && (
             <button className="read-always" onClick={() => onDecision('always-allow-reads')}>{copy.approval.alwaysAllowReads}</button>
           )}
@@ -491,7 +497,7 @@ function ApprovalDialog({
         <small className="approval-footnote">
           {request.kind === 'read'
             ? copy.approval.readFootnote
-            : copy.approval.actionFootnote}
+            : request.kind === 'handoff' ? copy.approval.handoffFootnote : copy.approval.actionFootnote}
         </small>
       </section>
     </div>
@@ -840,12 +846,15 @@ export function App(): React.JSX.Element {
     const offResumeHint = api.onSessionResumeHint((sessionId) => {
       setResumeHint({ ready: true, sessionId })
     })
+    const offBotDetection = api.onBotDetection?.(({ hostname, reason }) => {
+      setError(copy.approval.botDetected(hostname, reason))
+    }) ?? (() => {})
     void api.requestStatus().catch((cause: unknown) => {
       setError(cause instanceof Error ? cause.message : String(cause))
     })
     return () => {
       offStatus(); offEvent(); offApproval(); offApprovalResolved()
-      offTabAffinity(); offSelection(); offResumeHint()
+      offTabAffinity(); offSelection(); offResumeHint(); offBotDetection()
     }
   }, [api])
 

@@ -81,6 +81,14 @@ import { API_TOOL_NAMES, dispatchApiTool } from './api-tools.ts'
 import { cdpObservation } from './cdp/instance.ts'
 import { CDP_OBSERVATION_TOOLS, dispatchCdpObservation, resolveCdpCall } from './cdp/tools.ts'
 import {
+  BROWSER_CAPABILITY_TOOL_NAMES,
+  TAB_CAPABILITY_TOOL_NAMES,
+  dispatchCapabilityTool,
+  type BotDetectionReason,
+  type CapabilityDeps,
+} from './capability-tools.ts'
+import { BrowserEventLog, installBrowserEventListeners } from './browser-events.ts'
+import {
   LEGACY_RECENT_SESSION_STORAGE_KEY,
   PAGE_SESSION_CONTEXT_STORAGE_KEY,
   PageSessionContextTracker,
@@ -176,6 +184,9 @@ const BRIDGE_KEEPALIVE_ALARM = 'bridge-keepalive'
 let bridgeStartRevision = 0
 const interactionResponses = new InteractionResponseRouter()
 const transientEvents = new TransientEventCache()
+/** Browser-level change log behind management.events; listeners register at startup. */
+const browserEvents = new BrowserEventLog()
+installBrowserEventListeners(browserEvents, chrome)
 const tabAffinity = new TabAffinityController()
 const focusedWindow = new FocusedWindowTracker()
 const selections = new SelectionTracker()
@@ -478,6 +489,12 @@ function recordSelection(tab: chrome.tabs.Tab, frameId: number, value: unknown):
 function broadcastEvent(frame: ServerFrame): void {
   for (const port of panelPorts) {
     try { port.postMessage({ type: 'event', frame }) } catch { /* port already closed */ }
+  }
+}
+
+function broadcastBotDetection(report: { reason: BotDetectionReason; hostname: string | null }): void {
+  for (const port of panelPorts) {
+    try { port.postMessage({ type: 'bot-detection', ...report }) } catch { /* port already closed */ }
   }
 }
 
@@ -883,6 +900,25 @@ function bindOpenedTab(
   return true
 }
 
+/**
+ * Ask the user to act on the page themselves (browserAuth sign-in). Unlike
+ * authorizeToolCall, unrestricted access and trusted origins never answer
+ * for the user: only an explicit "done" counts as approved.
+ */
+async function requestHandoff(
+  prompt: ApprovalPrompt,
+  signal: AbortSignal,
+  windowId: number,
+  sessionId: string | undefined,
+  timeoutMs: number,
+): Promise<ApprovalAuthorization> {
+  if (signal.aborted) return 'cancelled'
+  const result = await approvals.request(prompt, signal, windowId, sessionId, timeoutMs)
+  if (signal.aborted) return 'cancelled'
+  if (result.status !== 'decision') return result.status
+  return result.decision === 'allow-once' ? 'approved' : 'denied'
+}
+
 async function authorizeToolCall(
   prompt: ApprovalPrompt,
   signal: AbortSignal,
@@ -1186,7 +1222,27 @@ function routeToolCall(call: ToolCall): void {
       },
     )
   }
-  void (isTabManagementTool(call.name)
+  const capabilityDeps = (
+    tab: Pick<chrome.tabs.Tab, 'id' | 'url' | 'windowId'> | undefined,
+    windowId: number,
+  ): CapabilityDeps => ({
+    ...(tab === undefined ? {} : { tab }),
+    sharePageContent,
+    authorize: (prompt) => authorizeToolCall(prompt, controller.signal, windowId, call.sessionId, unrestrictedAccess),
+    handoff: (prompt, timeoutMs) => requestHandoff(prompt, controller.signal, windowId, call.sessionId, timeoutMs),
+    cdp: cdpObservation,
+    events: browserEvents,
+    notifyBotDetection: broadcastBotDetection,
+    signal: controller.signal,
+  })
+  const browserCapabilityDispatch = async (): Promise<ToolAnswer> => {
+    let windowId: number | undefined
+    try { windowId = (await chrome.windows.getLastFocused()).id } catch { /* approvals report unavailable */ }
+    return dispatchCapabilityTool(call, capabilityDeps(undefined, windowId ?? 0))
+  }
+  void (BROWSER_CAPABILITY_TOOL_NAMES.has(call.name)
+    ? browserCapabilityDispatch()
+    : isTabManagementTool(call.name)
     ? managementDispatch()
     : call.name === 'management.tabs.open'
     ? resolveOpenTabWindow(call.sessionId).then((target) => 'ok' in target
@@ -1210,6 +1266,8 @@ function routeToolCall(call: ToolCall): void {
             target.id ?? 0,
             (prompt) => authorizeToolCall(prompt, controller.signal, target.windowId, call.sessionId, unrestrictedAccess),
           )
+        : TAB_CAPABILITY_TOOL_NAMES.has(call.name)
+        ? dispatchCapabilityTool(call, capabilityDeps(target, target.windowId))
         : call.name.startsWith('cdp.')
         ? dispatchCdpCall(call, target, sharePageContent, controller.signal, unrestrictedAccess)
         : dispatchToolCall(

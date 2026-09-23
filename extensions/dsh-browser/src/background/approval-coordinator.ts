@@ -35,6 +35,7 @@ export class ApprovalCoordinator {
     signal: AbortSignal,
     windowId: number,
     sessionId?: string,
+    timeoutMs: number = this.timeoutMs,
   ): Promise<ApprovalRequestResult> {
     if (signal.aborted) return Promise.resolve({ status: 'cancelled' })
     const request: ApprovalRequest = {
@@ -48,7 +49,7 @@ export class ApprovalCoordinator {
         signal.removeEventListener('abort', onAbort)
         resolve(result)
       }
-      const timer = setTimeout(() => { this.settle(request.id, { status: 'timed-out' }) }, this.timeoutMs)
+      const timer = setTimeout(() => { this.settle(request.id, { status: 'timed-out' }) }, timeoutMs)
       this.pending.set(request.id, { request, windowId, resolve: resolveWithCleanup, timer })
       signal.addEventListener('abort', onAbort, { once: true })
       if (signal.aborted) {

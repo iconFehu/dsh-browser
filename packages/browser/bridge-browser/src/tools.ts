@@ -7,27 +7,29 @@ export interface BrowserToolsOptions { toolTimeoutMs: number; snapshotMaxChars: 
 interface TextResult { text: string }
 const TEXT_OUTPUT = { schema: { type: 'object', additionalProperties: false, properties: { text: { type: 'string', required: true } } }, render: (_args: unknown, value: unknown) => [{ type: 'text' as const, text: (value as TextResult).text }] } as const
 
-/** The only browser tools exposed to the model. */
-export const BROWSER_TOOL_NAMES = ['botDetection', 'browserAuth', 'cdp', 'management', 'pageAssets', 'viewport', 'visibility', 'webmcp'] as const
+/**
+ * The only browser tools exposed to the model. WebMCP stays internal, as in
+ * ChatGPT's extension: page-registered tools control both their definition and
+ * their result, so they are not offered to the model.
+ */
+export const BROWSER_TOOL_NAMES = ['botDetection', 'browserAuth', 'cdp', 'management', 'pageAssets', 'viewport', 'visibility'] as const
 const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
-  botDetection: 'Report CAPTCHA, bot-detection, access-denied, and challenge-loop states.',
-  browserAuth: 'Coordinate a user-controlled browser authentication flow.',
+  botDetection: 'Report CAPTCHA, bot-detection, access-denied, and challenge-loop states so the user can resolve them; never try to solve or bypass them.',
+  browserAuth: 'Hand a sign-in step to the user: describe the fields; the user types credentials directly on the page and they are never shared with you. Returns only a status such as submitted, declined, expired, or origin_changed.',
   cdp: 'Use allowlisted Chrome DevTools observation and capture methods.',
   management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. Only methods listed in the schema are available.',
-  pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list/bundle cover observed assets.',
-  viewport: 'Read, set, or reset the controlled tab viewport override.',
-  visibility: 'Read or change whether the browser is visible to the user.',
-  webmcp: 'Discover and invoke tools explicitly registered by the current page.',
+  pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list inventories observed assets, and bundle saves selected ones into the user\'s Downloads folder (you receive file names, never contents).',
+  viewport: 'Read, set, or reset a viewport override for responsive testing (Chrome, requires browser developer mode). Reset overrides before finishing unless the user asked to keep them.',
+  visibility: 'Read or change whether the browser window is visible to the user.',
 }
 const METHOD_GUIDE: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Methods: report.',
   browserAuth: 'Methods: request.',
   cdp: 'Methods: call, events. Use only for CDP observation/capture; navigation belongs to management.tabs.',
   management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, click, type, press, scroll, wait, back, forward; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events.',
-  pageAssets: 'Methods: snapshot, getText, list, bundle.',
+  pageAssets: 'Methods: snapshot, getText, list, bundle (bundle needs the inventoryId from list).',
   viewport: 'Methods: get, set, reset.',
   visibility: 'Methods: get, set.',
-  webmcp: 'Methods: fetchTools, call.',
 }
 const CAPABILITY_METHODS: Record<typeof BROWSER_TOOL_NAMES[number], readonly string[]> = {
   botDetection: ['report'],
@@ -37,7 +39,6 @@ const CAPABILITY_METHODS: Record<typeof BROWSER_TOOL_NAMES[number], readonly str
   pageAssets: ['snapshot', 'getText', 'list', 'bundle'],
   viewport: ['get', 'set', 'reset'],
   visibility: ['get', 'set'],
-  webmcp: ['fetchTools', 'call'],
 }
 const ALLOWED_CDP_METHODS = new Set([
   'Accessibility.getFullAXTree', 'DOM.getDocument', 'DOM.getOuterHTML',
@@ -91,12 +92,11 @@ const MANAGEMENT_ARG_SCHEMA = {
 } as const
 const ARG_SCHEMAS = {
   botDetection: { type: 'object', additionalProperties: false, properties: { reason: { type: 'string', enum: ['captcha_failed', 'access_denied', 'challenge_loop', 'unexpected_bot_error'], required: true } } },
-  browserAuth: { type: 'object', additionalProperties: false, description: 'Authentication request.', properties: { origin: { type: 'string', required: true }, fields: { type: 'array', required: true, description: 'Authentication fields.', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, label: { type: 'string', required: true }, type: { type: 'string', enum: ['text', 'password', 'otp'], required: true }, selector: { type: 'string', required: true }, required: { type: 'boolean', required: true } } } }, submit: { type: 'object', additionalProperties: false, properties: { action: { type: 'string', enum: ['click', 'press_enter'], required: true }, selector: { type: 'string', required: true } } } } },
+  browserAuth: { type: 'object', additionalProperties: false, description: 'Sign-in handoff: the user fills and submits these fields on the page themselves.', properties: { origin: { type: 'string', required: true, description: 'http(s) origin of the controlled page that shows the sign-in form.' }, fields: { type: 'array', required: true, description: 'The 1-6 fields the user needs to fill, shown to the user as a checklist.', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, label: { type: 'string', required: true, description: 'Field label as shown on the page.' }, type: { type: 'string', enum: ['text', 'email', 'password', 'otp'], required: true }, required: { type: 'boolean', required: true }, selector: { type: 'string', description: 'Optional CSS selector of the field on the page.' } } } } } },
   cdp: { type: 'object', additionalProperties: false, properties: { method: { type: 'string', required: true, description: 'Allowlisted CDP method.' }, params: { type: 'object', additionalProperties: true }, afterSequence: { type: 'number', description: 'Sequence cursor for cdp.events.' } } },
-  pageAssets: { type: 'object', additionalProperties: false, properties: { delta: { type: 'boolean', description: 'snapshot: return only changes since the previous snapshot.' }, region: { type: 'string', description: 'snapshot: CSS selector or "main" to read only that region.' }, selector: { type: 'string', description: 'getText: CSS selector; omit to read the whole page.' }, frame: { type: 'number', description: 'Iframe number from snapshot; omit for the top page.' }, assetIds: { type: 'array', items: { type: 'string' } }, kinds: { type: 'array', items: { type: 'string', enum: ['font', 'image', 'stylesheet', 'video', 'other'] } } } },
-  viewport: { type: 'object', additionalProperties: false, properties: { width: { type: 'number' }, height: { type: 'number' } } },
-  visibility: { type: 'object', additionalProperties: false, properties: { visible: { type: 'boolean', required: true } } },
-  webmcp: { type: 'object', additionalProperties: false, description: 'fetchTools takes no arguments; call takes tool and input.', properties: { tool: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', required: true }, description: { type: 'string' }, origin: { type: 'string', required: true }, registrationId: { type: 'string', required: true } } }, input: { type: 'object', additionalProperties: true } } },
+  pageAssets: { type: 'object', additionalProperties: false, properties: { delta: { type: 'boolean', description: 'snapshot: return only changes since the previous snapshot.' }, region: { type: 'string', description: 'snapshot: CSS selector or "main" to read only that region.' }, selector: { type: 'string', description: 'getText: CSS selector; omit to read the whole page.' }, frame: { type: 'number', description: 'Iframe number from snapshot; omit for the top page.' }, inventoryId: { type: 'string', description: 'bundle: inventoryId returned by list.' }, assetIds: { type: 'array', description: 'bundle: asset ids from list; omit to take every asset matching kinds.', items: { type: 'string' } }, kinds: { type: 'array', items: { type: 'string', enum: ['font', 'image', 'stylesheet', 'video', 'other'] } } } },
+  viewport: { type: 'object', additionalProperties: false, properties: { width: { type: 'number', description: 'set: CSS pixel width, 320-10000.' }, height: { type: 'number', description: 'set: CSS pixel height, 240-10000.' } } },
+  visibility: { type: 'object', additionalProperties: false, properties: { visible: { type: 'boolean', description: 'set: true shows the browser window, false minimizes it.' } } },
 } as const
 
 function validateManagementArgs(namespace: string, method: string, args: Record<string, unknown>): void {
@@ -160,6 +160,16 @@ function validateCapabilityArgs(capability: string, method: string, args: Record
     if (args.frame !== undefined && (typeof args.frame !== 'number' || !Number.isSafeInteger(args.frame) || args.frame < 0)) throw new Error(`pageAssets.${method} frame must be a non-negative integer`)
     if (method === 'snapshot' && args.delta !== undefined && typeof args.delta !== 'boolean') throw new Error('pageAssets.snapshot delta must be boolean')
   }
+  if (capability === 'browserAuth') {
+    if (typeof args.origin !== 'string' || !/^https?:\/\//i.test(args.origin)) throw new Error('browserAuth.request origin must be an http(s) origin')
+    if (!Array.isArray(args.fields) || args.fields.length === 0 || args.fields.length > 6) throw new Error('browserAuth.request fields must contain 1-6 items')
+  }
+  if (capability === 'viewport' && method === 'set') {
+    const valid = (value: unknown, min: number): boolean => typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= 10_000
+    if (!valid(args.width, 320) || !valid(args.height, 240)) throw new Error('viewport.set requires integer width 320-10000 and height 240-10000')
+  }
+  if (capability === 'visibility' && method === 'set' && typeof args.visible !== 'boolean') throw new Error('visibility.set requires boolean visible')
+  if (capability === 'pageAssets' && method === 'bundle' && (typeof args.inventoryId !== 'string' || args.inventoryId.length === 0)) throw new Error('pageAssets.bundle requires the inventoryId returned by pageAssets.list')
   if (capability === 'pageAssets' && method === 'bundle') {
     if (args.assetIds !== undefined && (!Array.isArray(args.assetIds) || !args.assetIds.every((id) => typeof id === 'string' && id.length > 0))) throw new Error('pageAssets.bundle assetIds must be strings')
     if (args.kinds !== undefined && (!Array.isArray(args.kinds) || !args.kinds.every((kind) => ['font', 'image', 'stylesheet', 'video', 'other'].includes(String(kind))))) throw new Error('pageAssets.bundle kinds contains an unsupported asset kind')

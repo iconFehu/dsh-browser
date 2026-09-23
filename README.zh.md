@@ -47,7 +47,7 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 
 ## 核心能力
 
-模型看到的是 8 个高层能力工具。每次调用指定 `method`（`management` 还要指定 `namespace`），例如 `management` 配 `namespace=tabs, method=list`。
+模型看到的是 7 个高层能力工具。每次调用指定 `method`（`management` 还要指定 `namespace`），例如 `management` 配 `namespace=tabs, method=list`。
 
 | 能力 | 已端到端接通的方法 | 说明 |
 |---|---|---|
@@ -56,7 +56,14 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出标签页的稳定 ID 与活动/受控状态、打开 URL（`active:false` 时保持当前页在前台）、在受控页导航、跟随已列出的标签页而不激活它，或关闭一个已列出的标签页 |
 | `management`（Chrome） | `bookmarks.search` / `create` / `update` / `delete`、`history.search`、`downloads.list`、`tabGroups.list` / `create` / `ungroup` | 浏览器 API 操作；会改动状态的操作需要确认 |
 | `cdp`（Chrome，需手动开启） | `call`（仅限允许名单内的方法）、`events` | 只做观察，需在设置里开启「浏览器开发者模式」：深层 DOM 读取、网络与性能指标、诊断，以及以本地保存对话框导出截图/PDF |
-| `pageAssets.list` / `bundle`、`viewport`、`visibility`、`webmcp`、`browserAuth`、`botDetection` | — | 为与工具名保持一致而注册；扩展尚未实现这些方法，调用会返回错误 |
+| `management` | `windows.list`、`tabs.update`、`tabGroups.update`、`downloads.cancel`、`events` | 列出窗口、固定/静音/激活标签页、编辑标签组、取消下载（后三项需要确认），以及长轮询浏览器变更日志；日志只含 id，不含标题和 URL |
+| `browserAuth` | `request` | 登录移交：侧栏请你直接在页面上登录，完成后点「我已登录」。你的凭据不会发给模型，模型只拿到状态（`submitted`、`declined`、`expired`、`origin_changed` 等）。即使开启了完全控制浏览器，也不会替你确认 |
+| `pageAssets` | `list` / `bundle` | 列出页面加载的图片、字体、样式表和媒体（遵循页面共享设置）；确认后 `bundle` 会把选中的文件存到「下载/dsh-browser-assets/…」，模型只拿到文件名和计数，拿不到文件内容 |
+| `viewport`（Chrome，需手动开启） | `get` / `set` / `reset` | 用于响应式测试，和 `cdp` 共用同一个调试器附加，因此需要开启「浏览器开发者模式」；`set` 需要确认，关闭侧栏或调试器分离后覆盖自动失效 |
+| `visibility` | `get` / `set` | 读取浏览器窗口是否可见，或显示/最小化窗口（需要确认） |
+| `botDetection` | `report` | 提示你页面被验证码或访问拒绝拦住了，由你自行处理；扩展不会尝试破解或绕过 |
+
+WebMCP 与 ChatGPT 扩展一样只在内部使用：页面注册的工具，其定义和返回结果都由页面控制，因此不开放给模型。
 | 发送图片 | `session.prompt` / `session.attachment` | 按宿主能力启用图片草稿、纯图片消息和持久历史预览 |
 | 引用选中内容 | 侧栏输入框 | 在页面里划选的文字会出现在输入框，随下一条消息一起发送，并带上来源与不可信内容边界 |
 

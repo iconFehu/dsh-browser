@@ -1,6 +1,11 @@
 /** Shared panel/background contract for browser action approval. */
 
-export type ApprovalKind = 'read' | 'action'
+/**
+ * `handoff` asks the user to do something on the page themselves (sign in);
+ * `allow-once` then means "done" and `deny` means "declined". Handoffs never
+ * pass through unrestricted access or trusted-origin shortcuts.
+ */
+export type ApprovalKind = 'read' | 'action' | 'handoff'
 export type ApprovalDecision = 'deny' | 'allow-once' | 'always-allow-reads' | 'trust-session' | 'trust-origin'
 /** Background authorization result; transport failures must not masquerade as a user decision. */
 export type ApprovalAuthorization = 'approved' | 'denied' | 'unavailable' | 'timed-out' | 'cancelled'

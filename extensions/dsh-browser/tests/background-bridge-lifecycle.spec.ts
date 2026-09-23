@@ -452,6 +452,53 @@ describe('background bridge lifecycle', () => {
     })
   })
 
+  it('always hands sign-in to the user, even with unrestricted browser control', async () => {
+    const chromeMock = mockChrome({
+      localGet: async () => ({
+        dshSettings: {
+          bridgeUrl: 'wss://bridge.example/ext/bridge',
+          unrestrictedBrowserAccess: true,
+        },
+      }),
+    })
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    await import('../src/background/index.ts')
+
+    const panel = panelPort()
+    chromeMock.onConnect.emit(panel.port)
+    await vi.waitFor(() => { expect(FakeWebSocket.instances).toHaveLength(1) })
+    const socket = FakeWebSocket.instances[0]!
+    socket.open()
+    await Promise.resolve()
+    socket.receive({ t: 'hello.ok', caps: { textOnly: true, snapshotMaxChars: 32_000, maxInteractiveItems: 60 } })
+    await Promise.resolve()
+    socket.receive({
+      t: 'capability.call',
+      id: 'sign-in',
+      capability: 'browserAuth', method: 'request',
+      args: { origin: 'https://example.com', fields: [{ id: 'pw', label: 'Password', type: 'password', required: true }] },
+      expiresAt: Date.now() + 10_000,
+    })
+
+    const approval = await vi.waitFor(() => {
+      const message = panel.postMessage.mock.calls
+        .map((args: unknown[]) => args[0] as { type?: string; request?: { id?: string; kind?: string } })
+        .find((value) => value.type === 'approval.request')
+      expect(message?.request?.kind).toBe('handoff')
+      return message!
+    })
+    expect(socket.sent).not.toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'sign-in' }))
+
+    panel.onMessage.emit({ type: 'approval.response', id: approval.request!.id, decision: 'allow-once' })
+    await vi.waitFor(() => {
+      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'sign-in', ok: true }))
+    })
+    const answer = socket.sent.find((frame) => (frame as { id?: string }).id === 'sign-in') as { result: { text: string } }
+    const handoffResult = JSON.parse(answer.result.text) as Record<string, unknown>
+    expect(handoffResult).toMatchObject({ status: 'submitted' })
+    expect(Object.keys(handoffResult).sort()).toEqual(['currentOrigin', 'status'])
+  })
+
   it('cancels in-flight unrestricted calls before persisting revocation', async () => {
     let finishTabLookup!: (tab: chrome.tabs.Tab) => void
     const tabLookup = new Promise<chrome.tabs.Tab>((resolve) => { finishTabLookup = resolve })

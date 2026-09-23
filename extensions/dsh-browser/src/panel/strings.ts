@@ -17,6 +17,11 @@ export interface PanelCopy {
     trustSession: string
     readFootnote: string
     actionFootnote: string
+    handoffTitle: string
+    handoffDone: string
+    handoffDecline: string
+    handoffFootnote: string
+    botDetected: (hostname: string | null, reason: string) => string
   }
   tool: {
     running: string
@@ -237,6 +242,11 @@ const EN: PanelCopy = {
     trustSession: 'No confirmation while chatting',
     readFootnote: 'Esc to deny · You can disable automatic reading in Settings at any time',
     actionFootnote: 'Esc to deny · Chat-scoped no-confirmation is kept until you remove it and applies only while the side panel is open · Typed content is never shown',
+    handoffTitle: 'Sign in on the page',
+    handoffDone: "I've signed in",
+    handoffDecline: 'Decline',
+    handoffFootnote: 'Esc to decline · Type your credentials directly on the page; the assistant never sees them',
+    botDetected: (hostname, reason) => `${hostname ?? 'This page'} is blocking the assistant (${reason.replace(/_/g, ' ')}). Resolve it in the tab yourself, then tell the assistant to continue.`,
   },
   tool: {
     running: 'Working on page',
@@ -479,6 +489,14 @@ const ZH: PanelCopy = {
     trustSession: '对话期间免确认此域',
     readFootnote: 'Esc 拒绝 · 可随时在设置中关闭自动读取',
     actionFootnote: 'Esc 拒绝 · 对话期间免确认会保留到手动移除，且仅在侧栏打开时生效 · 输入内容不会显示',
+    handoffTitle: '请在页面上登录',
+    handoffDone: '我已登录',
+    handoffDecline: '拒绝',
+    handoffFootnote: 'Esc 拒绝 · 请直接在页面里输入账号和密码，助手看不到这些内容',
+    botDetected: (hostname, reason) => {
+      const reasons: Record<string, string> = { captcha_failed: '验证码未通过', access_denied: '访问被拒绝', challenge_loop: '反复出现验证', unexpected_bot_error: '人机检测报错' }
+      return `${hostname ?? '当前页面'}拦住了助手（${reasons[reason] ?? reason}）。请在该标签页里自行处理，然后告诉助手继续。`
+    },
   },
   tool: {
     running: '正在操作页面',

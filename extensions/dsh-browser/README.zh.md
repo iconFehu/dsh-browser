@@ -16,6 +16,10 @@ dsh 的**浏览器操作端**：让模型直接读取并操作你在浏览器里
 | 操作页面 | `management.tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | 按快照编号操作元素（兼容 React/Vue）、按键、滚动、稳定检测和历史跳转 |
 | 标签页 | `management.tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出、打开（`active:false` 时保持当前页在前台）、导航、跟随但不激活、刷新或关闭已列出的标签页 |
 | 浏览器数据（Chrome） | `management.bookmarks.*` / `history.search` / `downloads.list` / `tabGroups.*` | 书签、历史、下载和标签组；会改动状态的调用需要确认 |
+| 登录移交 | `browserAuth.request` | 侧栏请你直接在页面上登录；模型只拿到状态，拿不到你的凭据 |
+| 页面资源 | `pageAssets.list` / `bundle` | 列出页面加载的资源；确认后把文件存到「下载/dsh-browser-assets/…」（只把文件名返回给模型） |
+| 窗口与视口 | `visibility.get` / `set`、`viewport.get` / `set` / `reset` | 显示或最小化窗口；视口覆盖需要开启浏览器开发者模式 |
+| 被拦截的页面 | `botDetection.report` | 提示你页面遇到验证码或访问拒绝，由你自行处理 |
 | 开发者观察（Chrome） | `cdp.call` / `cdp.events` | 默认关闭，需在设置里开启「浏览器开发者模式」；只以观察方式把调试器附加到受控标签页 |
 | 图片对话 | `session.prompt` / `session.attachment` | 按宿主能力启用图片选择、纯图片发送和持久历史预览 |
 | 引用你划选的内容 | 侧栏输入框 | 你在页面里选中的文字会变成输入框里的引用，随下一条消息一起发送 |

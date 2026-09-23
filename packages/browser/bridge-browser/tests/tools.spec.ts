@@ -11,11 +11,12 @@ describe('registerBrowserTools', () => {
     return { ctx, registered, requestTool, bridge: { requestTool } as unknown as BridgeServer }
   }
 
-  it('registers exactly the eight high-level capabilities', () => {
+  it('registers exactly the seven high-level capabilities and keeps WebMCP internal', () => {
     const { ctx, registered } = harness()
     const disposers = registerBrowserTools(ctx, {} as BridgeServer, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     expect(registered.map(({ name }) => name)).toEqual([...BROWSER_TOOL_NAMES])
-    expect(disposers.size).toBe(8)
+    expect(disposers.size).toBe(7)
+    expect(registered.map(({ name }) => name)).not.toContain('webmcp')
   })
 
   it('unwraps a high-level call into capability method and args', async () => {
@@ -78,7 +79,7 @@ describe('registerBrowserTools', () => {
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     const pageAssets = registered.find(({ name }) => name === 'pageAssets')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     expect(Object.keys(cdp.properties.args.properties)).toEqual(['method', 'params', 'afterSequence'])
-    expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'assetIds', 'kinds'])
+    expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'inventoryId', 'assetIds', 'kinds'])
   })
 
   it('routes page reads and page actions to the extension method names', async () => {
@@ -120,12 +121,30 @@ describe('registerBrowserTools', () => {
     expect(requestTool).not.toHaveBeenCalled()
   })
 
-  it('exposes nested authentication and WebMCP argument schemas', () => {
+  it('describes the sign-in handoff without any credential value field', () => {
     const { ctx, registered, bridge } = harness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
-    const auth = registered.find(({ name }) => name === 'browserAuth')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
-    const webmcp = registered.find(({ name }) => name === 'webmcp')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
-    expect(Object.keys(auth.properties.args.properties)).toEqual(['origin', 'fields', 'submit'])
-    expect(Object.keys(webmcp.properties.args.properties)).toEqual(['tool', 'input'])
+    const auth = registered.find(({ name }) => name === 'browserAuth')!.definition.parameters as { properties: { args: { properties: { fields: { items: { properties: Record<string, unknown> } } } & Record<string, unknown> } } }
+    expect(Object.keys(auth.properties.args.properties)).toEqual(['origin', 'fields'])
+    expect(Object.keys(auth.properties.args.properties.fields.items.properties)).toEqual(['id', 'label', 'type', 'required', 'selector'])
+  })
+
+  it('validates handoff, viewport, visibility, and bundle arguments before dispatch', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const run = (name: string) => registered.find((tool) => tool.name === name)!.definition.execute as (args: unknown, exec: unknown) => Promise<unknown>
+    const exec = { signal: new AbortController().signal }
+    await expect(run('browserAuth')({ method: 'request', args: { origin: 'javascript:alert(1)', fields: [{ id: 'u', label: 'User', type: 'text', required: true }] } }, exec)).rejects.toThrow('http(s) origin')
+    await expect(run('browserAuth')({ method: 'request', args: { origin: 'https://example.com', fields: [] } }, exec)).rejects.toThrow('1-6 items')
+    await expect(run('viewport')({ method: 'set', args: { width: 100, height: 800 } }, exec)).rejects.toThrow('width 320-10000')
+    await expect(run('visibility')({ method: 'set', args: {} }, exec)).rejects.toThrow('boolean visible')
+    await expect(run('pageAssets')({ method: 'bundle', args: { kinds: ['image'] } }, exec)).rejects.toThrow('inventoryId')
+    expect(requestTool).not.toHaveBeenCalled()
+    await run('visibility')({ method: 'get', args: {} }, exec)
+    await run('viewport')({ method: 'set', args: { width: 390, height: 844 } }, exec)
+    expect(requestTool.mock.calls.map(([name, args]) => [name, args])).toEqual([
+      ['visibility', { method: 'get', args: {} }],
+      ['viewport', { method: 'set', args: { width: 390, height: 844 } }],
+    ])
   })
 })

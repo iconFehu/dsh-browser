@@ -47,7 +47,7 @@ The paired Playwright / extension duration ratio was **1.24** (95% CI **1.16–1
 
 ## Core capabilities
 
-The model sees eight high-level capability tools. Each call names a `method` (and, for `management`, a `namespace`), for example `management` with `namespace=tabs, method=list`.
+The model sees seven high-level capability tools. Each call names a `method` (and, for `management`, a `namespace`), for example `management` with `namespace=tabs, method=list`.
 
 | Capability | Methods wired end to end | Notes |
 |---|---|---|
@@ -56,7 +56,14 @@ The model sees eight high-level capability tools. Each call names a `method` (an
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List tabs with stable IDs and active/controlled state, open a URL (`active:false` keeps the current tab in front), navigate the controlled tab, follow a listed tab without activating it, or close one listed tab |
 | `management` (Chrome) | `bookmarks.search` / `create` / `update` / `delete`, `history.search`, `downloads.list`, `tabGroups.list` / `create` / `ungroup` | Browser API operations; state-changing ones require approval |
 | `cdp` (Chrome, opt-in) | `call` with an allowlisted method, `events` | Observation only, behind **Browser developer mode** in Settings: deep DOM read, network and performance metrics, diagnostics, and screenshot/PDF export as a local save dialog |
-| `pageAssets.list` / `bundle`, `viewport`, `visibility`, `webmcp`, `browserAuth`, `botDetection` | — | Registered for tool-name compatibility; the extension does not implement these methods yet and answers with an error |
+| `management` | `windows.list`, `tabs.update`, `tabGroups.update`, `downloads.cancel`, `events` | Window list, pin/mute/activate a tab, edit a tab group, cancel a download (these three need approval), and long-poll a browser change log that carries ids only, never titles or URLs |
+| `browserAuth` | `request` | Sign-in handoff: the side panel asks you to sign in on the page yourself and choose “I've signed in”. Your credentials never reach the model, which only gets a status (`submitted`, `declined`, `expired`, `origin_changed`, …). Unrestricted control never answers this for you |
+| `pageAssets` | `list` / `bundle` | List the images, fonts, stylesheets, and media a page loaded (follows page-sharing settings); an approved bundle saves the selected files to `Downloads/dsh-browser-assets/…`, and the model receives file names and counts, never contents |
+| `viewport` (Chrome, opt-in) | `get` / `set` / `reset` | Responsive testing through the same CDP attachment as `cdp`, so it requires **Browser developer mode**; `set` needs approval, and the override disappears when the panel closes or the debugger detaches |
+| `visibility` | `get` / `set` | Read whether the browser window is visible, or show/minimize it (approval required) |
+| `botDetection` | `report` | Tells you the page is blocked by a CAPTCHA or access denial so you can resolve it; the extension never tries to solve or bypass it |
+
+WebMCP stays internal, as in ChatGPT's extension: tools that a page registers control both their definition and their result, so they are not offered to the model.
 | Send images | `session.prompt` / `session.attachment` | Host-capability-gated image drafts, image-only prompts, and durable history previews |
 | Quote a selection | side panel composer | Text you highlight in the page appears in the composer and is sent with your next message as fenced, attributed page content |
 

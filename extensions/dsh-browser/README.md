@@ -16,6 +16,10 @@ Model calls arrive as `capability.call` frames and run inside the extension as `
 | Operate page | `management.tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | Act on snapshot numbers (React/Vue compatible), keys, scrolling, settle detection, and history |
 | Tabs | `management.tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List, open (`active:false` keeps the current tab in front), navigate, follow without activating, reload, or close a listed tab |
 | Browser data (Chrome) | `management.bookmarks.*` / `history.search` / `downloads.list` / `tabGroups.*` | Bookmarks, history, downloads, and tab groups; state-changing calls require approval |
+| Sign-in handoff | `browserAuth.request` | The side panel asks you to sign in on the page yourself; the model only gets a status, never your credentials |
+| Page assets | `pageAssets.list` / `bundle` | Inventory loaded assets; an approved bundle saves files to `Downloads/dsh-browser-assets/…` (names only go back to the model) |
+| Window and viewport | `visibility.get` / `set`, `viewport.get` / `set` / `reset` | Show or minimize the window; viewport overrides need Browser developer mode |
+| Blocked pages | `botDetection.report` | Tells you about a CAPTCHA or access denial so you can resolve it |
 | Developer observation (Chrome) | `cdp.call` / `cdp.events` | Off by default; enable **Browser developer mode** in Settings. Attaches the debugger to the controlled tab for observation only |
 | Chat with images | `session.prompt` / `session.attachment` | Host-gated image selection, image-only sends, and durable history previews |
 | Quote what you highlight | side panel composer | The text you select in the page becomes a quote in the composer and rides along with your next message |

@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The **browser-operation bridge** for dsh: mounts a token-authenticated WebSocket carrier (`/ext/bridge`) that the Chrome extension connects to, projects its calls onto dsh 0.1.5 Typert Remotes, follows Session and Remote Event streams per connection, and registers eight text-only, high-level browser capability tools that work through the extension — manage tabs, navigate, reach browser data, and optionally observe through CDP in the real browser, login state preserved. The side panel is the conversation entry; the tools are the product.
+The **browser-operation bridge** for dsh: mounts a token-authenticated WebSocket carrier (`/ext/bridge`) that the Chrome extension connects to, projects its calls onto dsh 0.1.5 Typert Remotes, follows Session and Remote Event streams per connection, and registers seven text-only, high-level browser capability tools that work through the extension — manage tabs, navigate, reach browser data, and optionally observe through CDP in the real browser, login state preserved. The side panel is the conversation entry; the tools are the product.
 
 **Text-only browser tools, multimodal chat passthrough**: page snapshots stay structured text (title, main content, numbered interactive inventory, and masked form fields), and every browser action uses stable inventory numbers. The generic RPC carrier also passes dsh 0.1.5 image prompts and durable attachment reads; deferred new sessions expose image limits only when the host actually mounts the attachment service.
 
@@ -66,7 +66,7 @@ Each `respond` carries a globally unique transport id as well as the host intera
 
 ## Tools
 
-Eight capability tools are registered: `botDetection`, `browserAuth`, `cdp`, `management`, `pageAssets`, `viewport`, `visibility`, and `webmcp`. Each takes `method` and `args`, and `management` also takes `namespace`. The bridge validates methods and arguments against a closed schema before dispatch; `cdp.call` only accepts an allowlist of observation and capture methods. See the root README for which methods the extension currently implements.
+Seven capability tools are registered: `botDetection`, `browserAuth`, `cdp`, `management`, `pageAssets`, `viewport`, and `visibility`; WebMCP stays internal. Each takes `method` and `args`, and `management` also takes `namespace`. The bridge validates methods and arguments against a closed schema before dispatch; `cdp.call` only accepts an allowlist of observation and capture methods. See the root README for which methods the extension currently implements.
 
 ## Model Experience
 
