@@ -65,7 +65,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $BundleDirectory $archiveName) -Destination $archive
     Copy-Item -LiteralPath (Join-Path $BundleDirectory 'SHA256SUMS.txt') -Destination $checksums
   } else {
-    $base = "https://github.com/Lum1104/dsh-browser/releases/download/v$Version"
+    $base = "https://github.com/iconFehu/dsh-browser/releases/download/v$Version"
     Invoke-WebRequest -UseBasicParsing "$base/$archiveName" -OutFile $archive
     Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS.txt" -OutFile $checksums
   }

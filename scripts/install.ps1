@@ -23,7 +23,7 @@ $ProgressPreference = 'SilentlyContinue'
 # message into question marks on a non-Chinese install.
 try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }
 
-$Repository = 'Lum1104/dsh-browser'
+$Repository = 'iconFehu/dsh-browser'
 $RemoteRef = 'main'
 $DshHomeDir = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $HOME '.dsh' }
 $ManagedRoot = Join-Path $DshHomeDir 'dsh-browser'

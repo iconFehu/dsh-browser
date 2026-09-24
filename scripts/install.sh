@@ -5,7 +5,7 @@
 # No further configuration is required: the extension discovers local dsh automatically and loopback connections require no token.
 set -euo pipefail
 
-REPOSITORY="Lum1104/dsh-browser"
+REPOSITORY="iconFehu/dsh-browser"
 REMOTE_REF="main"
 DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
 MANAGED_ROOT="$DSH_HOME_DIR/dsh-browser"
