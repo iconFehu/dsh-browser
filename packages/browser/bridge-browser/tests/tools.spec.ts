@@ -82,6 +82,22 @@ describe('registerBrowserTools', () => {
     expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'inventoryId', 'assetIds', 'kinds'])
   })
 
+  it('lists allowed CDP methods while allowing events without a CDP method', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const cdp = registered.find(({ name }) => name === 'cdp')!.definition
+    const args = (cdp.parameters as { properties: { args: { properties: { method: { enum: string[] } }; required?: string[] } } }).properties.args
+    expect(args.properties.method.enum).toEqual([
+      'Accessibility.getFullAXTree', 'DOM.getDocument', 'DOM.getOuterHTML',
+      'Network.enable', 'Network.disable', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
+      'Page.captureScreenshot', 'Page.printToPDF',
+    ])
+    expect(args.required ?? []).not.toContain('method')
+    const exec = { signal: new AbortController().signal }
+    await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'events', args: { afterSequence: 0 } }, exec)
+    expect(requestTool).toHaveBeenCalledWith('cdp', { method: 'events', args: { afterSequence: 0 } }, exec.signal, 1000)
+  })
+
   it('routes page reads and page actions to the extension method names', async () => {
     const { ctx, registered, bridge, requestTool } = harness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
@@ -117,7 +133,8 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition
     const exec = { signal: new AbortController().signal }
-    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Page.navigate' } }, exec)).rejects.toThrow('not allowlisted')
+    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Page.navigate' } }, exec)).rejects.toThrow('invalid arguments')
+    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: {} }, exec)).rejects.toThrow('not allowlisted')
     expect(requestTool).not.toHaveBeenCalled()
   })
 
