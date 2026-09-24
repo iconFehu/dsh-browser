@@ -186,7 +186,9 @@ describe('resolveCdpCall', () => {
     expect(resolveCdpCall(wire('cdp.call', { method: 'DOM.getDocument' }))?.name).toBe('cdp.dom')
     expect(resolveCdpCall(wire('cdp.call', { method: 'Performance.getMetrics' }))?.name).toBe('cdp.performance')
     expect(resolveCdpCall(wire('cdp.call', { method: 'Network.enable' }))?.name).toBe('cdp.network')
+    expect(resolveCdpCall(wire('cdp.cdp.call', { method: 'Network.enable' }))?.name).toBe('cdp.network')
     expect(resolveCdpCall(wire('cdp.events', { afterSequence: 3 }))?.name).toBe('cdp.diagnostics')
+    expect(resolveCdpCall(wire('cdp.cdp.events', { afterSequence: 3 }))?.name).toBe('cdp.diagnostics')
     expect(resolveCdpCall(wire('cdp.dom'))?.name).toBe('cdp.dom')
   })
 

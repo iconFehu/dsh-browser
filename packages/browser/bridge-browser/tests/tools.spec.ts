@@ -79,7 +79,9 @@ describe('registerBrowserTools', () => {
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     const pageAssets = registered.find(({ name }) => name === 'pageAssets')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     expect(Object.keys(cdp.properties.args.properties)).toEqual(['method', 'params', 'afterSequence'])
+    expect(Object.keys(cdp.properties)).toEqual(['method', 'args'])
     expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'inventoryId', 'assetIds', 'kinds'])
+    expect(Object.keys(pageAssets.properties)).not.toContain('namespace')
   })
 
   it('lists allowed CDP methods while allowing events without a CDP method', async () => {
@@ -96,6 +98,15 @@ describe('registerBrowserTools', () => {
     const exec = { signal: new AbortController().signal }
     await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'events', args: { afterSequence: 0 } }, exec)
     expect(requestTool).toHaveBeenCalledWith('cdp', { method: 'events', args: { afterSequence: 0 } }, exec.signal, 1000)
+  })
+
+  it('ignores a duplicated cdp namespace instead of prefixing the wire method', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const cdp = registered.find(({ name }) => name === 'cdp')!.definition
+    const exec = { signal: new AbortController().signal }
+    await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ namespace: 'cdp', method: 'call', args: { method: 'Network.enable' } }, exec)
+    expect(requestTool).toHaveBeenCalledWith('cdp', { method: 'call', args: { method: 'Network.enable' } }, exec.signal, 1000)
   })
 
   it('routes page reads and page actions to the extension method names', async () => {

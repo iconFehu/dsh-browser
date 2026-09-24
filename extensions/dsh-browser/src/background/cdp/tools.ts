@@ -51,8 +51,10 @@ const CDP_METHOD_OBSERVATIONS: Readonly<Record<string, string>> = {
  */
 export function resolveCdpCall(call: ToolCall): ToolCall | undefined {
   if (CDP_OBSERVATION_TOOLS.has(call.name)) return call
-  if (call.name === 'cdp.events') return { ...call, name: 'cdp.diagnostics' }
-  if (call.name !== 'cdp.call' || typeof call.args.method !== 'string') return undefined
+  // A model that copies management's namespace onto cdp sends cdp.cdp.call.
+  const wireName = call.name === 'cdp.cdp.call' || call.name === 'cdp.cdp.events' ? call.name.slice('cdp.'.length) : call.name
+  if (wireName === 'cdp.events') return { ...call, name: 'cdp.diagnostics' }
+  if (wireName !== 'cdp.call' || typeof call.args.method !== 'string') return undefined
   const name = CDP_METHOD_OBSERVATIONS[call.args.method]
   if (name === undefined) return undefined
   const params = typeof call.args.params === 'object' && call.args.params !== null && !Array.isArray(call.args.params)
