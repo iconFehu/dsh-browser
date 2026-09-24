@@ -644,6 +644,11 @@ export function App(): React.JSX.Element {
     void tabsPromise?.then(setBrowserTabs).catch(() => {})
     return off
   }, [api])
+  useEffect(() => {
+    if (!tabPicker) return
+    const optionalApi = api as PanelApi & { listBrowserTabs?: () => Promise<BrowserTabRef[]> }
+    void optionalApi.listBrowserTabs?.().then(setBrowserTabs).catch(() => {})
+  }, [api, tabPicker])
   const [selection, setSelection] = useState<PageSelection | null>(null)
   const [imageLimits, setImageLimits] = useState<ImageAttachmentLimits | null>(null)
   const [addingImages, setAddingImages] = useState(false)

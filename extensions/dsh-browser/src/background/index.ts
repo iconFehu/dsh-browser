@@ -42,6 +42,7 @@ import type { ServerFrame } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts
 import { BRIDGE_PATH } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
 import { discoverLocalBridge, inspectBridge, safeAddress, DESKTOP_PORTS, type ConnectionDiagnostic } from './discovery.ts'
 import { tabRefFromChrome, type BrowserTabRef } from './tab-registry.ts'
+import { TabRecency } from './tab-recency.ts'
 import { BridgeClient, type BridgeState } from './bridge.ts'
 import { createRpc } from './rpc.ts'
 import {
@@ -1082,12 +1083,15 @@ async function followModelSelectedTab(tab: chrome.tabs.Tab, sessionId?: string):
   commitTabAffinityRebind(summary, sessionId, 'background')
 }
 
+const tabRecency = new TabRecency()
+
 /** Public refs for every http(s) tab, for the panel and Web Client @tab pickers. */
 async function listBrowserTabRefs(): Promise<BrowserTabRef[]> {
   const tabs = await chrome.tabs.query({})
-  return tabs.map(tabRefFromChrome)
+  const recency = await tabRecency.forTabs(tabs)
+  return tabs.map((tab) => tabRefFromChrome(tab, recency.get(tab.id ?? -1) ?? 0))
     .filter((tab): tab is BrowserTabRef => tab !== null)
-    .sort((a, b) => a.title.localeCompare(b.title) || a.url.localeCompare(b.url))
+    .sort((a, b) => b.updatedAt - a.updatedAt || a.title.localeCompare(b.title) || a.url.localeCompare(b.url))
 }
 
 /** Bind the session to the tab the user picked by opaque ref. */
@@ -1807,6 +1811,7 @@ chrome.notifications.onClicked.addListener((notificationId) => {
 // ---- Tab affinity ----
 
 chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  void tabRecency.activated(tabId)
   void affinityReady.then(() => {
     const activationRevision = focusedWindow.acceptActivation(windowId)
     if (activationRevision === null) return
@@ -1832,6 +1837,7 @@ chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
 })
 
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
+  void tabRecency.replace(removedTabId, addedTabId)
   // The old document is gone even though Chrome transfers the tab identity.
   if (cdpObservation.attachedTab() === removedTabId) void cdpObservation.retract()
   broadcastSelections(selections.clearTab(removedTabId))
@@ -1860,6 +1866,7 @@ chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
 })
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  void tabRecency.removed(tabId)
   if (cdpObservation.attachedTab() === tabId) void cdpObservation.retract()
   broadcastSelections(selections.clearTab(tabId))
   void pageSessionContexts.ready.then(() => {
