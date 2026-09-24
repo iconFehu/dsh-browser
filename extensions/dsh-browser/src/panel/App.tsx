@@ -1843,9 +1843,16 @@ export function App(): React.JSX.Element {
                 className="setting-toggle-input"
                 type="checkbox"
                 checked={settings?.cdpEnabled ?? false}
-                onChange={(event) => setSettings((current) => current === null
-                  ? current
-                  : { ...current, cdpEnabled: event.target.checked })}
+                onChange={(event) => {
+                  // Persist this switch on its own: the form's Save also saves relay
+                  // profiles, which needs a live bridge and would otherwise drop it.
+                  const enabled = event.target.checked
+                  setSettings((current) => current === null ? current : { ...current, cdpEnabled: enabled })
+                  void api.updateSettings({ cdpEnabled: enabled }).catch((cause: unknown) => {
+                    setSettings((current) => current === null ? current : { ...current, cdpEnabled: !enabled })
+                    setError(cause instanceof Error ? cause.message : String(cause))
+                  })
+                }}
               />
               <span className="setting-toggle-control" aria-hidden="true"><span /></span>
             </label>
