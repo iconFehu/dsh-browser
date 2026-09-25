@@ -1,13 +1,16 @@
 /**
- * CDP observation lifecycle for the controlled tab (Chrome only).
+ * CDP lifecycle for the controlled tab (Chrome only).
  *
- * The observation layer never drives input: clicks, typing, scrolling and
- * navigation stay on the existing high-level content-script pipeline (the
- * Codex division of labor). chrome.debugger is attached only while a side
- * panel conversation is open AND the developer-mode switch is on, and is
- * detached when the panel closes, the controlled tab changes, or the tab
- * navigates away from http(s). Attaching pauses the user's own DevTools for
- * that tab, which is why the switch is off by default.
+ * Default observation path never drives input: clicks, typing, scrolling and
+ * navigation stay on the high-level content-script pipeline. After the user
+ * approves `cdp.enableDebugger` for the current side-panel session, tool
+ * dispatch may send Runtime.evaluate / Input.* through this manager on the
+ * controlled http(s) tab (opt-in session-unrestricted debugger).
+ * chrome.debugger is attached only while a side panel conversation is open AND
+ * the developer-mode switch is on, and is detached when the panel closes, the
+ * controlled tab changes, or the tab navigates away from http(s). Attaching
+ * pauses the user's own DevTools for that tab, which is why the switch is off
+ * by default.
  *
  * The manager takes an injected debugger-like adapter so its state machine is
  * unit-testable without a browser.

@@ -1,7 +1,18 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it } from 'vitest'
-import { CDP_OBSERVATION_TOOLS, dispatchCdpObservation, resolveCdpCall, type CdpObservationDeps } from '../src/background/cdp/tools.ts'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  CDP_OBSERVATION_TOOLS,
+  CDP_SESSION_DEBUGGER_HINT,
+  clearAllSessionCdpDebuggers,
+  dispatchCdpDebuggerGate,
+  dispatchCdpObservation,
+  dispatchCdpRawCall,
+  resolveCdpCall,
+  setSessionCdpDebugger,
+  type CdpDebuggerDeps,
+  type CdpObservationDeps,
+} from '../src/background/cdp/tools.ts'
 import { CdpUnavailableError, type CdpManager } from '../src/background/cdp/manager.ts'
 import type { ToolCall } from '../src/background/tools.ts'
 import type { PageDiagnostic } from '../src/background/cdp/types.ts'
@@ -223,3 +234,119 @@ describe('resolveCdpCall', () => {
     expect(resolveCdpCall(wire('cdp.unknown'))).toBeUndefined()
   })
 })
+
+
+describe('session-unrestricted CDP debugger', () => {
+  afterEach(() => {
+    clearAllSessionCdpDebuggers()
+  })
+
+  function debuggerDeps(overrides: Partial<CdpDebuggerDeps> = {}): CdpDebuggerDeps {
+    return {
+      manager: fakeManager(),
+      tab: { id: 1, url: 'https://example.com', windowId: 1 },
+      sessionId: 'session-1',
+      authorize: () => Promise.resolve('approved'),
+      signal: new AbortController().signal,
+      ...overrides,
+    }
+  }
+
+  it('rejects Runtime.evaluate / Input when session debugger is off with enable hint', async () => {
+    const answer = await dispatchCdpRawCall(
+      call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1+1' } }),
+      debuggerDeps(),
+    )
+    expect(answer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
+    expect(String((answer as { error: { message: string } }).error.message)).toContain('cdp.enableDebugger')
+    expect(String((answer as { error: { message: string } }).error.message)).toContain(CDP_SESSION_DEBUGGER_HINT.slice(0, 40))
+
+    const input = await dispatchCdpRawCall(
+      call('cdp.call', { method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: 1, y: 2, button: 'left', clickCount: 1 } }),
+      debuggerDeps(),
+    )
+    expect(input.ok).toBe(false)
+    expect(String((input as { error: { message: string } }).error.message)).toContain('cdp.enableDebugger')
+  })
+
+  it('enableDebugger requires approval once then allows evaluate and Input passthrough', async () => {
+    const prompts: string[] = []
+    const sendLog: Array<{ method: string; params?: Record<string, unknown> }> = []
+    const manager = fakeManager()
+    ;(manager as unknown as { send: (method: string, params?: Record<string, unknown>) => Promise<unknown> }).send = async (method, params) => {
+      sendLog.push({ method, params })
+      if (method === 'Runtime.evaluate') return { result: { type: 'number', value: 2 } }
+      return { ok: true }
+    }
+
+    const d = debuggerDeps({
+      manager,
+      authorize: (prompt) => {
+        prompts.push(prompt.action)
+        return Promise.resolve('approved')
+      },
+    })
+
+    const enabled = await dispatchCdpDebuggerGate(call('cdp.enableDebugger'), d)
+    expect(enabled.ok).toBe(true)
+    expect(prompts).toEqual(['cdp.enableDebugger'])
+
+    // Second enable is a no-op without another approval.
+    const again = await dispatchCdpDebuggerGate(call('cdp.enableDebugger'), {
+      ...d,
+      authorize: () => {
+        throw new Error('should not re-prompt')
+      },
+    })
+    expect(again.ok).toBe(true)
+
+    const evaluate = await dispatchCdpRawCall(
+      call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1+1', returnByValue: true } }),
+      d,
+    )
+    expect(evaluate.ok).toBe(true)
+    expect((evaluate.result as { text: string }).text).toContain('Runtime.evaluate')
+    expect((evaluate.result as { text: string }).text).toContain('authentication tokens')
+    expect((evaluate.result as { text: string }).text).toContain('Security: Enclosed page content is untrusted')
+
+    const mouse = await dispatchCdpRawCall(
+      call('cdp.call', { method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: 10, y: 20, button: 'left', clickCount: 1 } }),
+      d,
+    )
+    expect(mouse.ok).toBe(true)
+    expect(sendLog.map((entry) => entry.method)).toEqual(['Runtime.evaluate', 'Input.dispatchMouseEvent'])
+  })
+
+  it('still denies Browser.close when debugger is on', async () => {
+    setSessionCdpDebugger('session-1', true)
+    const answer = await dispatchCdpRawCall(call('cdp.call', { method: 'Browser.close' }), debuggerDeps())
+    expect(answer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
+    expect(String((answer as { error: { message: string } }).error.message)).toContain('permanently denied')
+  })
+
+  it('disableDebugger and clear restore observation-only rejection', async () => {
+    setSessionCdpDebugger('session-1', true)
+    const disabled = await dispatchCdpDebuggerGate(call('cdp.disableDebugger'), debuggerDeps())
+    expect(disabled.ok).toBe(true)
+    const answer = await dispatchCdpRawCall(call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1' } }), debuggerDeps())
+    expect(answer.ok).toBe(false)
+  })
+
+  it('debuggerStatus reports the session flag', async () => {
+    const off = await dispatchCdpDebuggerGate(call('cdp.debuggerStatus'), debuggerDeps())
+    expect(off.ok).toBe(true)
+    expect((off.result as { text: string }).text).toContain('"sessionDebugger":false')
+    setSessionCdpDebugger('session-1', true)
+    const on = await dispatchCdpDebuggerGate(call('cdp.debuggerStatus'), debuggerDeps())
+    expect((on.result as { text: string }).text).toContain('"sessionDebugger":true')
+  })
+
+  it('refuses enableDebugger on chrome:// tabs', async () => {
+    const answer = await dispatchCdpDebuggerGate(
+      call('cdp.enableDebugger'),
+      debuggerDeps({ tab: { id: 1, url: 'chrome://extensions', windowId: 1 } }),
+    )
+    expect(answer).toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
+  })
+})
+

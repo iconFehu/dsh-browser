@@ -80,7 +80,17 @@ import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
 import { ApprovalCoordinator, type ApprovalRequestResult } from './approval-coordinator.ts'
 import { API_TOOL_NAMES, dispatchApiTool } from './api-tools.ts'
 import { cdpObservation } from './cdp/instance.ts'
-import { CDP_OBSERVATION_TOOLS, dispatchCdpObservation, resolveCdpCall } from './cdp/tools.ts'
+import {
+  CDP_DEBUGGER_GATE_TOOLS,
+  CDP_OBSERVATION_TOOLS,
+  CDP_SESSION_DEBUGGER_HINT,
+  clearAllSessionCdpDebuggers,
+  dispatchCdpDebuggerGate,
+  dispatchCdpObservation,
+  dispatchCdpRawCall,
+  normalizeCdpWireName,
+  resolveCdpCall,
+} from './cdp/tools.ts'
 import {
   BROWSER_CAPABILITY_TOOL_NAMES,
   TAB_CAPABILITY_TOOL_NAMES,
@@ -280,6 +290,7 @@ async function persistSettings(next: Partial<Settings>): Promise<void> {
   const revokesUnrestrictedAccess = settings.unrestrictedBrowserAccess && !updated.unrestrictedBrowserAccess
   settings = updated
   cdpObservation.setDeveloperMode(updated.cdpEnabled)
+  if (!updated.cdpEnabled) clearAllSessionCdpDebuggers()
   if (!updated.unrestrictedBrowserAccess) unrestrictedAccessActive = false
   syncSelectionWatch()
   let accessTransition: Promise<void> | undefined
@@ -1173,7 +1184,7 @@ async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> 
   }
 }
 
-/** Run a `cdp.*` call through the observation layer; unknown CDP methods fail closed. */
+/** Run a `cdp.*` call: observation allowlist, session debugger gate, or raw passthrough. */
 function dispatchCdpCall(
   call: ToolCall,
   target: Pick<chrome.tabs.Tab, 'id' | 'url' | 'windowId'>,
@@ -1181,16 +1192,43 @@ function dispatchCdpCall(
   signal: AbortSignal,
   unrestrictedAccess: boolean,
 ): Promise<ToolAnswer> {
-  const observation = resolveCdpCall(call)
-  if (observation === undefined || !CDP_OBSERVATION_TOOLS.has(observation.name)) {
-    return Promise.resolve({ ok: false, error: { code: 'action-failed', message: `Unsupported CDP request: ${call.name}${typeof call.args.method === 'string' ? ` ${call.args.method}` : ''}` } })
+  const wireName = normalizeCdpWireName(call.name)
+  const authorize = (prompt: ApprovalPrompt) => authorizeToolCall(prompt, signal, target.windowId, call.sessionId, unrestrictedAccess)
+  if (CDP_DEBUGGER_GATE_TOOLS.has(wireName)) {
+    return dispatchCdpDebuggerGate({ ...call, name: wireName }, {
+      manager: cdpObservation,
+      tab: target,
+      sessionId: call.sessionId,
+      authorize,
+      signal,
+    })
   }
-  return dispatchCdpObservation(observation, {
-    manager: cdpObservation,
-    tab: target,
-    sharePageContent,
-    authorize: (prompt) => authorizeToolCall(prompt, signal, target.windowId, call.sessionId, unrestrictedAccess),
-    signal,
+  const observation = resolveCdpCall(call)
+  if (observation !== undefined && CDP_OBSERVATION_TOOLS.has(observation.name)) {
+    return dispatchCdpObservation(observation, {
+      manager: cdpObservation,
+      tab: target,
+      sharePageContent,
+      authorize,
+      signal,
+    })
+  }
+  // Non-allowlisted cdp.call: require session debugger; hint how to enable when off.
+  if (wireName === 'cdp.call') {
+    return dispatchCdpRawCall(call, {
+      manager: cdpObservation,
+      tab: target,
+      sessionId: call.sessionId,
+      authorize,
+      signal,
+    })
+  }
+  return Promise.resolve({
+    ok: false,
+    error: {
+      code: 'action-failed',
+      message: `Unsupported CDP request: ${call.name}${typeof call.args.method === 'string' ? ` ${call.args.method}` : ''}. ${CDP_SESSION_DEBUGGER_HINT}`,
+    },
   })
 }
 
@@ -1849,6 +1887,7 @@ chrome.runtime.onConnect.addListener((port) => {
       bridgeStartRevision += 1
       bridge?.suspendReconnect()
       cdpObservation.setPanelActive(false)
+      clearAllSessionCdpDebuggers()
       approvals.notifyPending()
       if (bridge?.state !== 'connected') disarmBridgeKeepalive()
     }

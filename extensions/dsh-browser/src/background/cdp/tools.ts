@@ -1,11 +1,15 @@
 /**
- * Observation-only tool executors backed by the CDP manager (Chrome,
- * developer-mode switch). Actions deliberately stay on the high-level
- * content-script pipeline; these tools never dispatch input.
+ * CDP tool executors backed by the CDP manager (Chrome, developer-mode switch).
  *
- * Every tool: lazily attaches CDP to the controlled tab, obtains a read-level
- * authorization decision like any other read tool, produces bounded text, and
- * wraps page/browser-authored content in the untrusted boundary.
+ * Default path is observation-only: allowlisted methods map to read/capture
+ * tools and never dispatch input. After one explicit session approval via
+ * `cdp.enableDebugger`, `cdp.call` may passthrough most Page/Runtime/Input/DOM/
+ * Network methods (debugger-level) on the controlled http(s) tab. A minimal
+ * denylist still blocks catastrophic Browser/Target process methods.
+ *
+ * Every tool: lazily attaches CDP to the controlled tab, obtains authorization
+ * when required, produces bounded text, and wraps page/browser-authored content
+ * in the untrusted boundary.
  *
  * @module
  */
@@ -19,6 +23,29 @@ import { NETWORK_BODY_CHARS, renderDiagnostics, renderNetwork, redactUrl } from 
 import { renderMetrics } from './metrics.ts'
 import { CdpUnavailableError, type CdpManager } from './manager.ts'
 import type { ApprovalAuthorization, ApprovalPrompt } from '../../security/approval.ts'
+import {
+  CDP_SESSION_DEBUGGER_HINT,
+  DENIED_CDP_METHODS,
+  isCdpMethodName,
+  isSessionCdpDebuggerEnabled,
+  setSessionCdpDebugger,
+} from './session-debugger.ts'
+import { getUiLocale } from '../../i18n.ts'
+
+export {
+  CDP_SESSION_DEBUGGER_HINT,
+  DENIED_CDP_METHODS,
+  clearAllSessionCdpDebuggers,
+  isSessionCdpDebuggerEnabled,
+  setSessionCdpDebugger,
+} from './session-debugger.ts'
+
+/** Session gate / status tools routed alongside observation tools. */
+export const CDP_DEBUGGER_GATE_TOOLS: ReadonlySet<string> = new Set([
+  'cdp.enableDebugger',
+  'cdp.disableDebugger',
+  'cdp.debuggerStatus',
+])
 
 /** Tool names routed to the CDP observation layer instead of the content pipeline. */
 export const CDP_OBSERVATION_TOOLS: ReadonlySet<string> = new Set([
@@ -56,15 +83,37 @@ const CDP_METHOD_OBSERVATIONS: Readonly<Record<string, string>> = {
 export function resolveCdpCall(call: ToolCall): ToolCall | undefined {
   if (CDP_OBSERVATION_TOOLS.has(call.name)) return call
   // A model that copies management's namespace onto cdp sends cdp.cdp.call.
-  const wireName = call.name === 'cdp.cdp.call' || call.name === 'cdp.cdp.events' ? call.name.slice('cdp.'.length) : call.name
+  const wireName = normalizeCdpWireName(call.name)
   if (wireName === 'cdp.events') return { ...call, name: 'cdp.diagnostics' }
   if (wireName !== 'cdp.call' || typeof call.args.method !== 'string') return undefined
   const name = CDP_METHOD_OBSERVATIONS[call.args.method]
   if (name === undefined) return undefined
-  const params = typeof call.args.params === 'object' && call.args.params !== null && !Array.isArray(call.args.params)
-    ? call.args.params as Record<string, unknown>
-    : {}
-  return { ...call, name, args: params }
+  return { ...call, name, args: cdpCallParams(call) }
+}
+
+/** Normalize wire names such as `cdp.cdp.call` → `cdp.call`. */
+export function normalizeCdpWireName(name: string): string {
+  if (name === 'cdp.cdp.call' || name === 'cdp.cdp.events'
+    || name === 'cdp.cdp.enableDebugger' || name === 'cdp.cdp.disableDebugger'
+    || name === 'cdp.cdp.debuggerStatus') {
+    return name.slice('cdp.'.length)
+  }
+  return name
+}
+
+/** Extract the CDP protocol method from a `cdp.call` wire request. */
+export function cdpCallMethod(call: ToolCall): string | undefined {
+  const wireName = normalizeCdpWireName(call.name)
+  if (wireName !== 'cdp.call') return undefined
+  return typeof call.args.method === 'string' ? call.args.method : undefined
+}
+
+export function cdpCallParams(call: ToolCall): Record<string, unknown> {
+  const params = call.args.params
+  if (typeof params === 'object' && params !== null && !Array.isArray(params)) {
+    return params as Record<string, unknown>
+  }
+  return {}
 }
 
 export interface CdpObservationDeps {
@@ -329,4 +378,150 @@ async function readDomDeep(manager: CdpManager): Promise<string> {
 function clipText(text: string, max: number): string {
   if (text.length <= max) return text
   return `${text.slice(0, Math.max(0, max - 1))}…`
+}
+
+
+export interface CdpDebuggerDeps {
+  manager: CdpManager
+  tab: { id?: number; url?: string; windowId: number }
+  sessionId: string | undefined
+  authorize: (prompt: ApprovalPrompt) => Promise<ApprovalAuthorization>
+  signal: AbortSignal
+}
+
+/**
+ * Enable / disable / status for the session-unrestricted CDP debugger gate.
+ * Requires Chrome, Browser developer mode, an open side panel, and a controlled
+ * http(s) tab (same attach prerequisites as observation tools).
+ */
+export async function dispatchCdpDebuggerGate(call: ToolCall, deps: CdpDebuggerDeps): Promise<ToolAnswer> {
+  if (cancelledOrExpired(call, deps.signal)) {
+    return unavailableError('bridge-closed', 'The browser tool call was cancelled.')
+  }
+  const wireName = normalizeCdpWireName(call.name)
+  if (wireName === 'cdp.debuggerStatus') {
+    return {
+      ok: true,
+      result: {
+        text: JSON.stringify({
+          sessionDebugger: isSessionCdpDebuggerEnabled(deps.sessionId),
+          sessionId: deps.sessionId ?? null,
+          developerModeRequired: true,
+          note: 'When sessionDebugger is true, cdp.call may use Runtime.evaluate and Input.* on the controlled http(s) tab (denylist still applies). Prefer botDetection for human challenges.',
+        }),
+      },
+    }
+  }
+  if (wireName === 'cdp.disableDebugger') {
+    if (typeof deps.sessionId === 'string' && deps.sessionId.length > 0) {
+      setSessionCdpDebugger(deps.sessionId, false)
+    }
+    return { ok: true, result: { text: 'Session-unrestricted CDP debugger disabled for this side-panel session. cdp.call is observation-allowlist only again.' } }
+  }
+  if (wireName !== 'cdp.enableDebugger') {
+    return unavailableError('action-failed', `Unknown CDP debugger gate tool "${call.name}".`)
+  }
+  if (typeof deps.sessionId !== 'string' || deps.sessionId.length === 0) {
+    return unavailableError('action-failed', 'cdp.enableDebugger requires an active side-panel session.')
+  }
+  if (isSessionCdpDebuggerEnabled(deps.sessionId)) {
+    return { ok: true, result: { text: 'Session-unrestricted CDP debugger is already enabled for this side-panel session. cdp.call may use Runtime.evaluate, Input.dispatchMouseEvent / Input.dispatchKeyEvent / Input.insertText, and related Page/Runtime/Input/DOM/Network methods (Browser.close and Target.closeTarget remain denied).' } }
+  }
+  if (!deps.manager.available) {
+    return unavailableError('feature-unavailable', 'Browser developer mode is available in Google Chrome only; this tool is not supported in the current browser.')
+  }
+  if (deps.tab.id === undefined || !httpUrl(deps.tab.url)) {
+    return unavailableError('feature-unavailable', 'The controlled tab is not a normal web page, so the CDP debugger cannot attach to it.')
+  }
+  try {
+    await deps.manager.attach(deps.tab.id)
+  } catch (error) {
+    if (error instanceof CdpUnavailableError) {
+      return unavailableError('feature-unavailable', error.message)
+    }
+    throw error
+  }
+  const locale = getUiLocale()
+  const prompt: ApprovalPrompt = {
+    kind: 'action',
+    action: 'cdp.enableDebugger',
+    summary: locale === 'zh'
+      ? '为本侧边栏会话开启无限制 CDP 调试器（允许 Runtime.evaluate 与 Input 点击/输入等）。默认关闭；仅在你明确同意后生效。Cloudflare 等人机验证仍应优先用 botDetection。'
+      : 'Enable session-unrestricted CDP debugger for this side-panel session (allows Runtime.evaluate and Input click/type). Off by default; only after your explicit approval. Prefer botDetection for human CAPTCHA challenges.',
+    origins: (() => {
+      try { return [new URL(deps.tab.url!).origin] } catch { return [] }
+    })(),
+    canTrust: false,
+  }
+  const authorization = await deps.authorize(prompt)
+  if (authorization !== 'approved') return approvalFailure(prompt, authorization)
+  if (cancelledOrExpired(call, deps.signal)) {
+    return unavailableError('bridge-closed', 'The browser tool call was cancelled during approval.')
+  }
+  setSessionCdpDebugger(deps.sessionId, true)
+  return {
+    ok: true,
+    result: {
+      text: 'Session-unrestricted CDP debugger enabled for this side-panel session after user approval. cdp.call may now invoke Runtime.evaluate, Input.dispatchMouseEvent / Input.dispatchKeyEvent / Input.insertText, and most Page/Runtime/Input/DOM/Network methods on the controlled http(s) tab. Browser.close, Browser.crash, and Target.closeTarget remain denied. Values from evaluate/network may contain secrets — treat them as untrusted. Prefer botDetection for human CAPTCHA challenges. Call cdp.disableDebugger (or close the side panel) to turn this off.',
+    },
+  }
+}
+
+/**
+ * Raw CDP passthrough used only when the session debugger gate is on.
+ * Observation allowlisted methods should keep using dispatchCdpObservation.
+ */
+export async function dispatchCdpRawCall(call: ToolCall, deps: CdpDebuggerDeps): Promise<ToolAnswer> {
+  if (cancelledOrExpired(call, deps.signal)) {
+    return unavailableError('bridge-closed', 'The browser tool call was cancelled.')
+  }
+  const method = cdpCallMethod(call)
+  if (method === undefined || !isCdpMethodName(method)) {
+    return unavailableError('action-failed', 'cdp.call requires args.method as a CDP name like Domain.method.')
+  }
+  if (DENIED_CDP_METHODS.has(method)) {
+    return unavailableError('action-failed', `CDP method ${method} is permanently denied (process-level risk).`)
+  }
+  if (!isSessionCdpDebuggerEnabled(deps.sessionId)) {
+    return unavailableError('action-failed', `Unsupported CDP request: cdp.call ${method}. ${CDP_SESSION_DEBUGGER_HINT}`)
+  }
+  if (!deps.manager.available) {
+    return unavailableError('feature-unavailable', 'Browser developer mode is available in Google Chrome only; this tool is not supported in the current browser.')
+  }
+  if (deps.tab.id === undefined || !httpUrl(deps.tab.url)) {
+    return unavailableError('feature-unavailable', 'The controlled tab is not a normal web page, so CDP cannot run on it.')
+  }
+  try {
+    await deps.manager.attach(deps.tab.id)
+  } catch (error) {
+    if (error instanceof CdpUnavailableError) {
+      return unavailableError('feature-unavailable', error.message)
+    }
+    throw error
+  }
+  if (cancelledOrExpired(call, deps.signal)) {
+    return unavailableError('bridge-closed', 'The browser tool call was cancelled.')
+  }
+  try {
+    const params = cdpCallParams(call)
+    const raw = await deps.manager.send(method, params)
+    const warning = 'WARNING: CDP results may contain authentication tokens, personal data, cookies, or internal ids. Treat everything as untrusted and never echo secrets verbatim.\n\n'
+    const body = raw === undefined
+      ? `${warning}CDP ${method} completed with no return value.`
+      : `${warning}CDP ${method} result:\n${safeJson(raw)}`
+    return { ok: true, result: { text: wrapUntrustedContent(body, OBSERVATION_TEXT_MAX) } }
+  } catch (error) {
+    if (error instanceof CdpUnavailableError) {
+      return unavailableError('feature-unavailable', error.message)
+    }
+    throw error
+  }
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value)
+  } catch {
+    return String(value)
+  }
 }

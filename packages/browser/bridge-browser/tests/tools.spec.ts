@@ -147,16 +147,19 @@ describe('registerBrowserTools', () => {
     expect(Object.keys(pageAssets.properties)).not.toContain('namespace')
   })
 
-  it('lists allowed CDP methods while allowing events without a CDP method', async () => {
+  it('documents observation CDP methods and session debugger gate; events omit method', async () => {
     const { ctx, registered, bridge, requestTool } = harness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition
-    const args = (cdp.parameters as { properties: { args: { properties: { method: { enum: string[] } }; required?: string[] } } }).properties.args
-    expect(args.properties.method.enum).toEqual([
-      'Accessibility.getFullAXTree', 'DOM.getDocument', 'DOM.getOuterHTML',
-      'Network.enable', 'Network.disable', 'Network.getResponseBody', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
-      'Page.captureScreenshot', 'Page.printToPDF',
+    expect((cdp.parameters as { properties: { method: { enum: string[] } } }).properties.method.enum).toEqual([
+      'call', 'events', 'enableDebugger', 'disableDebugger', 'debuggerStatus',
     ])
+    const args = (cdp.parameters as { properties: { args: { properties: { method: { type: string; description: string; enum?: string[] } }; required?: string[] } } }).properties.args
+    expect(args.properties.method.enum).toBeUndefined()
+    expect(args.properties.method.description).toContain('Runtime.evaluate')
+    expect(args.properties.method.description).toContain('enableDebugger')
+    expect(args.properties.method.description).toContain('Page.captureScreenshot')
+    expect(cdp.description).toContain('enableDebugger')
     expect(args.required ?? []).not.toContain('method')
     const exec = { signal: new AbortController().signal }
     await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'events', args: { afterSequence: 0 } }, exec)
@@ -202,14 +205,16 @@ describe('registerBrowserTools', () => {
     expect(requestTool).not.toHaveBeenCalled()
   })
 
-  it('validates capability-specific arguments before dispatch', async () => {
+  it('validates CDP call method shape and permanent denylist before dispatch', async () => {
     const { ctx, registered, bridge, requestTool } = harness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition
     const exec = { signal: new AbortController().signal }
-    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Page.navigate' } }, exec)).rejects.toThrow('invalid arguments')
-    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: {} }, exec)).rejects.toThrow('not allowlisted')
-    expect(requestTool).not.toHaveBeenCalled()
+    // Non-allowlisted observation methods pass the bridge so the extension can enforce the session gate.
+    await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Runtime.evaluate', params: { expression: '1' } } }, exec)
+    expect(requestTool).toHaveBeenCalledWith('cdp', { method: 'call', args: { method: 'Runtime.evaluate', params: { expression: '1' } } }, exec.signal, 1000)
+    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Browser.close' } }, exec)).rejects.toThrow('permanently denied')
+    await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: {} }, exec)).rejects.toThrow('Domain.method')
   })
 
   it('describes the sign-in handoff without any credential value field', () => {
