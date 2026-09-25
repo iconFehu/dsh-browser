@@ -68,6 +68,7 @@ export function actionCoveredByTrustedOrigins(
   if (prompt.kind !== 'action' || prompt.origins.length === 0) return false
   const hasKnownBoundary = prompt.canTrust
     || (prompt.action === 'management.tabs.navigate' && prompt.origins.length > 1)
+    || (prompt.action === 'management.tabs.update' && prompt.origins.length > 1)
     || (prompt.action === 'management.tabs.open' && prompt.origins.length === 1)
   if (!hasKnownBoundary) return false
   return prompt.origins.every((origin) =>

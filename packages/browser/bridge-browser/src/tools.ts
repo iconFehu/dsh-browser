@@ -17,7 +17,7 @@ const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Report CAPTCHA, bot-detection, access-denied, and challenge-loop states so the user can resolve them; never try to solve or bypass them.',
   browserAuth: 'Hand a sign-in step to the user: describe the fields; the user types credentials directly on the page and they are never shared with you. Returns only a status such as submitted, declined, expired, or origin_changed.',
   cdp: 'Use allowlisted Chrome DevTools observation and capture methods.',
-  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. Only methods listed in the schema are available.',
+  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. tabs.update accepts Chrome tabs.update updateProperties (active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected→highlighted, url); not title/groupId/index. Only methods listed in the schema are available.',
   pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list inventories observed assets, and bundle saves selected ones into the user\'s Downloads folder (you receive file names, never contents).',
   viewport: 'Read, set, or reset a viewport override for responsive testing (Chrome, requires browser developer mode). Reset overrides before finishing unless the user asked to keep them.',
   visibility: 'Read or change whether the browser window is visible to the user.',
@@ -61,12 +61,18 @@ const MANAGEMENT_ARG_SCHEMA = {
   additionalProperties: false,
   description: 'Arguments for the selected management method.',
   properties: {
-    url: { type: 'string', description: 'Complete http(s) URL; required by tabs.open and tabs.navigate.' },
-    tabId: { type: 'number', description: 'Browser tab id; required by tabs.activate.' },
+    url: { type: 'string', description: 'Complete http(s) URL; required by tabs.open and tabs.navigate; also accepted by tabs.update (Chrome updateProperties). javascript: URLs are rejected.' },
+    tabId: { type: 'number', description: 'Browser tab id; required by tabs.activate and tabs.update.' },
     tabIds: { type: 'array', description: 'Non-empty browser tab id array; required by tabs.close.', items: { type: 'number' } },
     windowId: { type: 'number', description: 'Optional browser window id for tabs.list.' },
-    active: { type: 'boolean', description: 'tabs.list: restrict to the active tab. tabs.open: bring the new tab to the front (default true; false opens it in the background).' },
-    index: { type: 'number', description: 'Element index from the latest pageAssets.snapshot; required by tabs.click and tabs.type.' },
+    active: { type: 'boolean', description: 'tabs.list: restrict to the active tab. tabs.open: bring the new tab to the front (default true; false opens it in the background). tabs.update: whether the tab should become active (Chrome updateProperties.active).' },
+    pinned: { type: 'boolean', description: 'tabs.update only: whether the tab should be pinned (Chrome updateProperties.pinned).' },
+    muted: { type: 'boolean', description: 'tabs.update only: whether the tab should be muted (Chrome updateProperties.muted).' },
+    autoDiscardable: { type: 'boolean', description: 'tabs.update only: whether the tab can be auto-discarded under memory pressure (Chrome updateProperties.autoDiscardable).' },
+    highlighted: { type: 'boolean', description: 'tabs.update only: add/remove the tab from the current selection (Chrome updateProperties.highlighted).' },
+    openerTabId: { type: 'number', description: 'tabs.update only: opener tab id in the same window (Chrome updateProperties.openerTabId).' },
+    selected: { type: 'boolean', description: 'tabs.update only: deprecated Chrome alias of highlighted; accepted and mapped to highlighted when highlighted is omitted.' },
+    index: { type: 'number', description: 'Element index from the latest pageAssets.snapshot; required by tabs.click and tabs.type. Not a tabs.update field — tab position changes belong to tabs.move.' },
     frame: { type: 'number', description: 'Iframe number from pageAssets.snapshot; omit for the top page.' },
     text: { type: 'string', description: 'Text for tabs.type. Sensitive values are never returned.' },
     replace: { type: 'boolean', description: 'tabs.type: clear the existing value first. Defaults to append.' },
@@ -74,8 +80,8 @@ const MANAGEMENT_ARG_SCHEMA = {
     direction: { type: 'string', enum: ['up', 'down', 'top', 'bottom'], description: 'tabs.scroll direction.' },
     amount: { type: 'number', description: 'tabs.scroll pixels; ignored for top and bottom.' },
     ms: { type: 'number', description: 'tabs.wait extra milliseconds after the settle check.' },
-    groupId: { type: 'number', description: 'Tab group id for tabGroups.update.' },
-    title: { type: 'string', description: 'Tab group title.' },
+    groupId: { type: 'number', description: 'Tab group id for tabGroups.update. Not a tabs.update field — use tabGroups / tabs.group.' },
+    title: { type: 'string', description: 'Tab group title (tabGroups.update) or bookmark title. Not a tabs.update field — page titles are not writable via Chrome tabs.update.' },
     color: { type: 'string', description: 'Tab group color.' },
     collapsed: { type: 'boolean', description: 'Whether the tab group is collapsed.' },
     query: { type: 'string', description: 'Bookmark search query.' },
@@ -130,8 +136,32 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
     if (typeof args.tabId !== 'number' || !Number.isSafeInteger(args.tabId) || args.tabId < 0) throw new Error('management.tabs.activate requires a non-negative integer tabId')
   } else if (method === 'update') {
     if (typeof args.tabId !== 'number' || !Number.isSafeInteger(args.tabId) || args.tabId < 0) throw new Error('management.tabs.update requires a non-negative integer tabId')
-    if (!['active', 'pinned', 'muted'].some((key) => args[key] !== undefined)) throw new Error('management.tabs.update requires an update')
-    for (const key of ['active', 'pinned', 'muted']) if (args[key] !== undefined && typeof args[key] !== 'boolean') throw new Error(`management.tabs.update ${key} must be boolean`)
+    const booleanKeys = ['active', 'autoDiscardable', 'highlighted', 'muted', 'pinned', 'selected'] as const
+    for (const key of booleanKeys) {
+      if (args[key] !== undefined && typeof args[key] !== 'boolean') throw new Error(`management.tabs.update ${key} must be boolean`)
+    }
+    if (args.openerTabId !== undefined && (typeof args.openerTabId !== 'number' || !Number.isSafeInteger(args.openerTabId) || args.openerTabId < 0)) {
+      throw new Error('management.tabs.update openerTabId must be a non-negative integer')
+    }
+    if (args.url !== undefined) {
+      if (typeof args.url !== 'string' || !/^https?:\/\//i.test(args.url)) {
+        throw new Error('management.tabs.update url must be a valid http(s) url')
+      }
+    }
+    const hasUpdate = booleanKeys.some((key) => args[key] !== undefined) || args.openerTabId !== undefined || args.url !== undefined
+    if (!hasUpdate) {
+      const present = Object.keys(args).filter((key) => key !== 'tabId' && args[key] !== undefined)
+      const hints: string[] = []
+      if (present.includes('title')) hints.push('title is not supported (page titles are not writable via tabs.update)')
+      if (present.includes('groupId')) hints.push('groupId belongs to management.tabGroups / tabs.group')
+      if (present.includes('index')) hints.push('index belongs to management.tabs.move')
+      const allowed = 'active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected (alias of highlighted), url'
+      let message = `management.tabs.update requires at least one of: ${allowed}.`
+      if (hints.length > 0) message += ` ${hints.join(' ')}.`
+      else if (present.length > 0) message += ` Unsupported fields: ${present.join(', ')}.`
+      message += ' For navigation, url is allowed here, or use management.tabs.navigate.'
+      throw new Error(message)
+    }
   } else if (method === 'reload') {
     if (args.tabId !== undefined && (typeof args.tabId !== 'number' || !Number.isSafeInteger(args.tabId) || args.tabId < 0)) throw new Error('management.tabs.reload tabId must be a non-negative integer')
   } else if (method === 'close') {

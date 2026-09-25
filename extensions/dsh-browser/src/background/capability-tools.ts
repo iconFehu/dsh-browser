@@ -170,24 +170,96 @@ async function windowsList(): Promise<ToolAnswer> {
 async function tabsUpdate(call: ToolCall, deps: CapabilityDeps): Promise<ToolAnswer> {
   const tabId = integer(call.args.tabId)
   if (tabId === undefined) return failure('management.tabs.update requires a tabId from management.tabs.list.')
-  const update: { active?: boolean; pinned?: boolean; muted?: boolean } = {}
-  for (const key of ['active', 'pinned', 'muted'] as const) {
+
+  const booleanKeys = ['active', 'autoDiscardable', 'highlighted', 'muted', 'pinned'] as const
+  const update: chrome.tabs.UpdateProperties = {}
+  for (const key of booleanKeys) {
+    if (call.args[key] !== undefined && typeof call.args[key] !== 'boolean') {
+      return failure(`management.tabs.update ${key} must be boolean.`)
+    }
     if (typeof call.args[key] === 'boolean') update[key] = call.args[key] as boolean
   }
-  if (Object.keys(update).length === 0) return failure('management.tabs.update requires active, pinned, or muted.')
+  if (call.args.selected !== undefined) {
+    if (typeof call.args.selected !== 'boolean') return failure('management.tabs.update selected must be boolean.')
+    // Chrome deprecated selected in favor of highlighted; map when highlighted is omitted.
+    if (update.highlighted === undefined) update.highlighted = call.args.selected
+  }
+  if (call.args.openerTabId !== undefined) {
+    const openerTabId = integer(call.args.openerTabId)
+    if (openerTabId === undefined) return failure('management.tabs.update openerTabId must be a non-negative integer.')
+    update.openerTabId = openerTabId
+  }
+  if (call.args.url !== undefined) {
+    if (typeof call.args.url !== 'string') return failure('management.tabs.update url must be a string.')
+    try {
+      const parsed = new URL(call.args.url)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return failure('management.tabs.update url must be a valid http(s) URL (javascript: and other schemes are not allowed).')
+      }
+      update.url = parsed.href
+    } catch {
+      return failure('management.tabs.update url must be a valid http(s) URL (javascript: and other schemes are not allowed).')
+    }
+  }
+
+  if (Object.keys(update).length === 0) {
+    const present = Object.keys(call.args).filter((key) => key !== 'tabId' && call.args[key] !== undefined)
+    const hints: string[] = []
+    if (present.includes('title')) hints.push('title is not supported (page titles are not writable via tabs.update)')
+    if (present.includes('groupId')) hints.push('groupId belongs to management.tabGroups / tabs.group')
+    if (present.includes('index')) hints.push('index belongs to management.tabs.move')
+    const allowed = 'active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected (alias of highlighted), url'
+    let message = `management.tabs.update requires at least one of: ${allowed}.`
+    if (hints.length > 0) message += ` ${hints.join(' ')}.`
+    else if (present.length > 0) message += ` Unsupported fields: ${present.join(', ')}.`
+    message += ' For navigation, url is allowed here, or use management.tabs.navigate.'
+    return failure(message)
+  }
+
   const before = await chrome.tabs.get(tabId).catch(() => undefined)
   if (before === undefined) return failure(`Tab ${tabId} is no longer open. Call management.tabs.list again.`, 'content-unavailable')
+
   const changes = Object.entries(update).map(([key, value]) => `${key}=${String(value)}`).join(', ')
-  const origin = originOf(before.url)
-  const rejected = await approved(deps, actionPrompt(
-    call.name,
-    zh() ? `更新标签页 ${tabId}（${changes}）` : `Update tab ${tabId} (${changes})`,
-    origin === undefined ? [] : [origin],
-  ))
+  const currentOrigin = originOf(before.url)
+  const destinationOrigin = update.url === undefined ? undefined : originOf(update.url)
+  const origins: string[] = []
+  if (update.url !== undefined) {
+    // Treat url changes like navigation: include current and destination origins.
+    if (currentOrigin !== undefined) origins.push(currentOrigin)
+    if (destinationOrigin !== undefined && !origins.includes(destinationOrigin)) origins.push(destinationOrigin)
+  } else if (currentOrigin !== undefined) {
+    origins.push(currentOrigin)
+  }
+
+  let summary: string
+  if (update.url !== undefined) {
+    summary = zh()
+      ? `导航标签页 ${tabId} 至 ${update.url}`
+      : `Navigate tab ${tabId} to ${update.url}`
+    const other = Object.entries(update).filter(([key]) => key !== 'url').map(([key, value]) => `${key}=${String(value)}`).join(', ')
+    if (other.length > 0) summary += zh() ? `（同时 ${other}）` : ` (also ${other})`
+  } else {
+    summary = zh()
+      ? `更新标签页 ${tabId}（${changes}）`
+      : `Update tab ${tabId} (${changes})`
+  }
+
+  const rejected = await approved(deps, actionPrompt(call.name, summary, origins))
   if (rejected !== undefined) return rejected
   const after = await chrome.tabs.update(tabId, update)
-  return text({ tabId, active: after?.active, pinned: after?.pinned, muted: after?.mutedInfo?.muted })
+  return text({
+    tabId,
+    active: after?.active,
+    pinned: after?.pinned,
+    muted: after?.mutedInfo?.muted,
+    highlighted: after?.highlighted,
+    autoDiscardable: after?.autoDiscardable,
+    openerTabId: after?.openerTabId,
+    url: after?.url,
+    status: after?.status,
+  })
 }
+
 
 async function tabGroupsUpdate(call: ToolCall, deps: CapabilityDeps): Promise<ToolAnswer> {
   const groupId = integer(call.args.groupId)

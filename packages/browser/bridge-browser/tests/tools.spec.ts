@@ -61,7 +61,7 @@ describe('registerBrowserTools', () => {
     const parameters = registered.find(({ name }) => name === 'management')!.definition.parameters as { properties: { namespace: { enum: string[] }; method: { enum: string[] }; args: { properties: Record<string, unknown> } } }
     expect(parameters.properties.namespace.enum).toEqual(['windows', 'tabs', 'tabGroups', 'bookmarks', 'history', 'downloads', 'events'])
     expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'create', 'ungroup', 'search', 'delete', 'cancel', 'events'])
-    expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'index', 'frame', 'text', 'replace', 'key', 'direction', 'amount', 'ms', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
+    expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'pinned', 'muted', 'autoDiscardable', 'highlighted', 'openerTabId', 'selected', 'index', 'frame', 'text', 'replace', 'key', 'direction', 'amount', 'ms', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
   })
 
   it('validates method-specific management arguments before dispatch', async () => {
@@ -71,6 +71,29 @@ describe('registerBrowserTools', () => {
     const exec = { signal: new AbortController().signal }
     await expect((tool.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ namespace: 'tabs', method: 'open', args: {} }, exec)).rejects.toThrow('requires a valid http(s) url')
     expect(requestTool).not.toHaveBeenCalled()
+  })
+
+  it('accepts Chrome tabs.update updateProperties and rejects unsupported fields', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const tool = registered.find(({ name }) => name === 'management')!.definition
+    const exec = { signal: new AbortController().signal }
+    const run = (args: Record<string, unknown>) =>
+      (tool.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ namespace: 'tabs', method: 'update', args }, exec)
+
+    await expect(run({ tabId: 7 })).rejects.toThrow('requires at least one of')
+    await expect(run({ tabId: 7, title: 'Nope' })).rejects.toThrow('title is not supported')
+    await expect(run({ tabId: 7, groupId: 3 })).rejects.toThrow('groupId belongs to')
+    await expect(run({ tabId: 7, index: 1 })).rejects.toThrow('index belongs to')
+    await expect(run({ tabId: 7, url: 'javascript:alert(1)' })).rejects.toThrow('valid http(s) url')
+    expect(requestTool).not.toHaveBeenCalled()
+
+    await run({ tabId: 7, pinned: true, muted: false })
+    await run({ tabId: 7, url: 'https://example.com/', highlighted: true, selected: true, autoDiscardable: false, openerTabId: 2 })
+    expect(requestTool.mock.calls.map(([, args]) => args)).toEqual([
+      { method: 'tabs.update', args: { tabId: 7, pinned: true, muted: false } },
+      { method: 'tabs.update', args: { tabId: 7, url: 'https://example.com/', highlighted: true, selected: true, autoDiscardable: false, openerTabId: 2 } },
+    ])
   })
 
   it('exposes native argument schemas for non-management capabilities', () => {

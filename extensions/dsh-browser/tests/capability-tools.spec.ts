@@ -42,7 +42,18 @@ function result(answer: Awaited<ReturnType<typeof dispatchCapabilityTool>>): Rec
 }
 
 const chromeMock = {
-  tabs: { get: vi.fn(async () => TAB), update: vi.fn(async (tabId: number, update: Record<string, unknown>) => ({ id: tabId, ...update })) },
+  tabs: {
+    get: vi.fn(async () => TAB),
+    update: vi.fn(async (tabId: number, update: Record<string, unknown>) => {
+      const after: Record<string, unknown> = { ...TAB, id: tabId, ...update }
+      if (typeof update.muted === 'boolean') {
+        after.mutedInfo = { muted: update.muted }
+        delete after.muted
+      }
+      if (typeof update.url === 'string') after.url = update.url
+      return after
+    }),
+  },
   windows: { get: vi.fn(async () => ({ id: 2, width: 1280, height: 800, state: 'normal' })), getLastFocused: vi.fn(async () => ({ id: 2, state: 'normal' })), update: vi.fn(async () => ({})), getAll: vi.fn(async () => []) },
   scripting: { executeScript: vi.fn(async () => [{ result: [
     { url: 'https://cdn.example.com/logo.png', type: 'img' },
@@ -194,6 +205,44 @@ describe('browser-level capabilities', () => {
     chromeMock.tabs.update.mockClear()
     expect((await dispatchCapabilityTool(call('management.tabs.update', { tabId: 7, muted: true }), denied.deps)).ok).toBe(false)
     expect(chromeMock.tabs.update).not.toHaveBeenCalled()
+  })
+
+  it('aligns tabs.update with Chrome updateProperties including url navigation', async () => {
+    const { deps: d, prompts } = deps()
+
+    const unsupported = await dispatchCapabilityTool(call('management.tabs.update', { tabId: 7, title: 'x', groupId: 1, index: 0 }), d)
+    expect(unsupported.ok).toBe(false)
+    expect(String((unsupported as { error: { message: string } }).error.message)).toMatch(/title is not supported/)
+    expect(String((unsupported as { error: { message: string } }).error.message)).toMatch(/groupId belongs to/)
+    expect(String((unsupported as { error: { message: string } }).error.message)).toMatch(/index belongs to/)
+    expect(chromeMock.tabs.update).not.toHaveBeenCalled()
+
+    const js = await dispatchCapabilityTool(call('management.tabs.update', { tabId: 7, url: 'javascript:alert(1)' }), d)
+    expect(js.ok).toBe(false)
+    expect(String((js as { error: { message: string } }).error.message)).toMatch(/http\(s\) URL/)
+
+    prompts.length = 0
+    const selected = result(await dispatchCapabilityTool(call('management.tabs.update', { tabId: 7, selected: true, muted: true }), d))
+    expect(chromeMock.tabs.update).toHaveBeenCalledWith(7, { highlighted: true, muted: true })
+    expect(selected).toMatchObject({ tabId: 7, highlighted: true, muted: true })
+    expect(prompts[0]).toMatchObject({ action: 'management.tabs.update', origins: ['https://shop.example.com'] })
+    expect(prompts[0]!.summary).toMatch(/Update tab 7|更新标签页 7/)
+
+    prompts.length = 0
+    chromeMock.tabs.update.mockClear()
+    const navigated = result(await dispatchCapabilityTool(call('management.tabs.update', {
+      tabId: 7,
+      url: 'https://news.example.com/story',
+      pinned: true,
+    }), d))
+    expect(chromeMock.tabs.update).toHaveBeenCalledWith(7, { url: 'https://news.example.com/story', pinned: true })
+    expect(navigated).toMatchObject({
+      tabId: 7,
+      url: 'https://news.example.com/story',
+      pinned: true,
+    })
+    expect(prompts[0]!.origins).toEqual(['https://shop.example.com', 'https://news.example.com'])
+    expect(prompts[0]!.summary).toMatch(/Navigate tab 7 to https:\/\/news\.example\.com\/story|导航标签页 7/)
   })
 
   it('reads the browser event log', async () => {
