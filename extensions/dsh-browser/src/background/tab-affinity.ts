@@ -1,5 +1,5 @@
 /**
- * Pure state machine for binding browser tools to one user-visible tab.
+ * Pure state machine for binding browser tools to user-selected tabs.
  *
  * The controller deliberately separates Chrome event handling from the
  * affinity rules so transitions can be tested without a browser runtime.
@@ -54,7 +54,7 @@ function sameTab(left: AffinityTab | null, right: AffinityTab | null): boolean {
     && left?.url === right?.url
 }
 
-/** Owns the controlled-tab lifecycle for one extension/bridge connection. */
+/** Owns each session's controlled-tab set and current target. */
 export class TabAffinityController {
   private controlled: AffinityTab | null = null
   private active: AffinityTab | null = null
@@ -64,6 +64,7 @@ export class TabAffinityController {
   private lost = false
   private revision = 0
   private sessionTabs = new Map<string, AffinityTab>()
+  private sessionMembers = new Map<string, Map<number, AffinityTab>>()
   private focusedSessionId: string | null = null
 
   snapshot(): TabAffinityState {
@@ -79,6 +80,49 @@ export class TabAffinityController {
   /** Associate a session with its controlled tab. */
   bindSession(sessionId: string, tab: AffinityTab): void {
     this.sessionTabs.set(sessionId, { ...tab })
+    this.sessionMembers.set(sessionId, new Map([[tab.tabId, { ...tab }]]))
+  }
+
+  /** Add a user-selected tab while retaining the session's other controlled tabs. */
+  addSessionTab(sessionId: string, tab: AffinityTab): void {
+    const members = this.sessionMembers.get(sessionId) ?? new Map<number, AffinityTab>()
+    if (this.focusedSessionId === sessionId) this.rebindControlled(tab, sessionId)
+    else this.revision += 1
+    members.set(tab.tabId, { ...tab })
+    this.sessionMembers.set(sessionId, members)
+    this.sessionTabs.set(sessionId, { ...tab })
+  }
+
+  getSessionTabs(sessionId: string): AffinityTab[] {
+    return [...(this.sessionMembers.get(sessionId)?.values() ?? [])].map((tab) => ({ ...tab }))
+  }
+
+  /** Select an already controlled member without releasing its peers. */
+  selectSessionTab(sessionId: string, tab: AffinityTab): boolean {
+    if (!this.sessionMembers.get(sessionId)?.has(tab.tabId)) return false
+    this.sessionTabs.set(sessionId, { ...tab })
+    if (this.focusedSessionId === sessionId) {
+      this.controlled = { ...tab }
+      this.active = { ...tab }
+      this.keptActiveTabId = null
+      this.lost = false
+    }
+    this.revision += 1
+    return true
+  }
+
+  sessionMembersMap(): Record<string, AffinityTab[]> {
+    return Object.fromEntries([...this.sessionMembers].map(([sid, tabs]) => [sid, [...tabs.values()].map((tab) => ({ ...tab }))]))
+  }
+
+  restoreSessionMembers(sessions: Record<string, AffinityTab[]>): void {
+    for (const [sid, tabs] of Object.entries(sessions)) {
+      const members = this.sessionMembers.get(sid) ?? new Map<number, AffinityTab>()
+      for (const tab of tabs) members.set(tab.tabId, { ...tab })
+      if (members.size === 0) continue
+      this.sessionMembers.set(sid, members)
+      if (!this.sessionTabs.has(sid)) this.sessionTabs.set(sid, { ...[...members.values()].at(-1)! })
+    }
   }
 
   sessionMap(): Record<string, AffinityTab> {
@@ -92,6 +136,7 @@ export class TabAffinityController {
   restoreSessionTabs(sessions: Record<string, AffinityTab>): void {
     for (const [sid, tab] of Object.entries(sessions)) {
       this.sessionTabs.set(sid, { ...tab })
+      if (!this.sessionMembers.has(sid)) this.sessionMembers.set(sid, new Map([[tab.tabId, { ...tab }]]))
     }
   }
 
@@ -171,6 +216,9 @@ export class TabAffinityController {
     for (const [sid, sTab] of this.sessionTabs.entries()) {
       if (sTab.tabId === tab.tabId) this.sessionTabs.set(sid, { ...tab })
     }
+    for (const members of this.sessionMembers.values()) {
+      if (members.has(tab.tabId)) members.set(tab.tabId, { ...tab })
+    }
     return this.bumpIfChanged(previousActive, previousControlled, previousKept)
   }
 
@@ -180,6 +228,7 @@ export class TabAffinityController {
     if (sid !== undefined && sid !== '') {
       if (this.sessionTabs.has(sid)) return false
       this.sessionTabs.set(sid, { ...tab })
+      this.sessionMembers.set(sid, new Map([[tab.tabId, { ...tab }]]))
       if (this.focusedSessionId === null) this.focusedSessionId = sid
       if (this.focusedSessionId === sid) {
         this.active = { ...tab }
@@ -208,6 +257,7 @@ export class TabAffinityController {
     if (sid === '') return false
     const previous = this.sessionTabs.get(sid)
     this.sessionTabs.set(sid, { ...tab })
+    this.sessionMembers.set(sid, new Map([[tab.tabId, { ...tab }]]))
     this.focusedSessionId = sid
     this.active = { ...tab }
     this.controlled = { ...tab }
@@ -230,6 +280,7 @@ export class TabAffinityController {
     this.lost = false
     if (sid !== undefined && sid !== '') {
       this.sessionTabs.set(sid, { ...tab })
+      this.sessionMembers.set(sid, new Map([[tab.tabId, { ...tab }]]))
       this.focusedSessionId = sid
     }
     this.revision += 1
@@ -248,6 +299,7 @@ export class TabAffinityController {
     this.lost = false
     if (sid !== undefined && sid !== '') {
       this.sessionTabs.set(sid, { ...tab })
+      this.sessionMembers.set(sid, new Map([[tab.tabId, { ...tab }]]))
       this.focusedSessionId = sid
     }
     this.revision += 1
@@ -287,8 +339,8 @@ export class TabAffinityController {
 
   sessionIdsForTab(tabId: number): string[] {
     const result: string[] = []
-    for (const [sid, tab] of this.sessionTabs.entries()) {
-      if (tab.tabId === tabId) result.push(sid)
+    for (const [sid, members] of this.sessionMembers.entries()) {
+      if (members.has(tabId)) result.push(sid)
     }
     return result
   }
@@ -296,12 +348,15 @@ export class TabAffinityController {
   /** Remove stale state when Chrome closes a tracked tab. */
   removeTab(tabId: number): boolean {
     let sessionRemoved = false
-    for (const [sid, sTab] of this.sessionTabs.entries()) {
-      if (sTab.tabId === tabId) {
-        this.sessionTabs.delete(sid)
-        if (this.focusedSessionId === sid) this.focusedSessionId = null
-        sessionRemoved = true
+    for (const [sid, members] of this.sessionMembers.entries()) {
+      if (!members.delete(tabId)) continue
+      if (members.size === 0) this.sessionMembers.delete(sid)
+      if (this.sessionTabs.get(sid)?.tabId === tabId) {
+        const next = [...members.values()].at(-1)
+        if (next === undefined) this.sessionTabs.delete(sid)
+        else this.sessionTabs.set(sid, { ...next })
       }
+      sessionRemoved = true
     }
     if (this.controlled?.tabId !== tabId && this.active?.tabId !== tabId) {
       if (sessionRemoved) this.revision += 1
@@ -311,11 +366,12 @@ export class TabAffinityController {
     const previousControlled = this.controlled
     const previousKept = this.keptActiveTabId
     if (this.controlled?.tabId === tabId) {
-      this.controlled = null
+      const fallback = this.focusedSessionId === null ? undefined : this.sessionTabs.get(this.focusedSessionId)
+      this.controlled = fallback === undefined ? null : { ...fallback }
       this.keptActiveTabId = null
       this.pinned = false
       this.hasBound = true
-      this.lost = true
+      this.lost = fallback === undefined
     }
     if (this.active?.tabId === tabId) this.active = null
     return this.bumpIfChanged(previousActive, previousControlled, previousKept) || sessionRemoved
@@ -325,6 +381,14 @@ export class TabAffinityController {
   replaceTab(removedTabId: number, addedTabId: number): boolean {
     if (removedTabId === addedTabId) return false
     let sessionReplaced = false
+    for (const members of this.sessionMembers.values()) {
+      const old = members.get(removedTabId)
+      if (old !== undefined) {
+        members.delete(removedTabId)
+        members.set(addedTabId, { ...old, tabId: addedTabId })
+        sessionReplaced = true
+      }
+    }
     for (const [sid, sTab] of this.sessionTabs.entries()) {
       if (sTab.tabId === removedTabId) {
         this.sessionTabs.set(sid, { ...sTab, tabId: addedTabId })
@@ -380,6 +444,7 @@ export class TabAffinityController {
     this.lost = false
     if (sessionId !== undefined && sessionId.trim() !== '') {
       this.sessionTabs.set(sessionId, { ...this.active })
+      this.sessionMembers.set(sessionId, new Map([[this.active.tabId, { ...this.active }]]))
     }
     this.revision += 1
     return true
@@ -403,8 +468,8 @@ export class TabAffinityController {
 
   tracks(tabId: number): boolean {
     if (this.controlled?.tabId === tabId || this.active?.tabId === tabId) return true
-    for (const tab of this.sessionTabs.values()) {
-      if (tab.tabId === tabId) return true
+    for (const members of this.sessionMembers.values()) {
+      if (members.has(tabId)) return true
     }
     return false
   }

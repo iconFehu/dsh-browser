@@ -30,6 +30,7 @@ import { BridgeServer } from './server.ts'
 import { BridgeLogger } from './logger.ts'
 import { createBrowserTabsRoute } from './browser-tabs-route.ts'
 import { BrowserContextInjector } from './browser-context.ts'
+import { bindBrowserTabMentions } from './browser-tab-mentions.ts'
 import { registerBrowserTools } from './tools.ts'
 import {
   BRIDGE_CONFIG_PATH,
@@ -228,6 +229,14 @@ function mountBridge(
       const write = logger[entry.level] ?? logger.info
       write?.call(logger, `[${entry.event}] ${entry.message}`)
     }),
+  })
+
+  ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
+    const decision = await next()
+    if (decision.kind === 'reject') return decision
+    const messages = await bindBrowserTabMentions(decision.messages, (ref) =>
+      server.requestTool('management.tabs.bind', { ref, append: true }, signal, resolved.toolTimeoutMs, String(agent.id)))
+    return messages === decision.messages ? decision : { ...decision, messages }
   })
 
   const route: WebUpgradeRoute = {

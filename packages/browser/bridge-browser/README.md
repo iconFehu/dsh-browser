@@ -60,7 +60,7 @@ Frames are JSON objects discriminated by `t`, defined in [`protocol.ts`](src/pro
 - Client → server: `hello` (auth + caps), `rpc` (gateway method passthrough), `respond` (resolve a host interaction by its RPC id), `capability.result`, `pong`.
 - Server → client: `hello.ok` (echoes negotiated caps), `rpc.result`, `respond.result` (correlated acceptance or error), `event` (bridge-owned projection of dsh Remote streams and waterfalls), `capability.call` (`capability` + `method` + `args`), `capability.cancel`, `ping`, `error`.
 
-A `session.prompt` whose text contains `[[dsh-browser-tab:<ref>]]` has the marker stripped and first binds that session to the referenced tab through `management.tabs.bind`. The Web Client's `@tab` picker reads the candidate refs from `/ext/browser-tabs`, which answers only loopback, same-origin requests from the host's own Web UI (other callers get 403).
+A prompt containing `[[dsh-browser-tab:<ref>]]` markers binds every selected tab to the session and removes the markers before the model step. The last selected tab becomes the current target; `management.tabs.activate` switches among the session's tabs. The Web Client's `@tab` picker reads candidate refs from `/ext/browser-tabs`, which answers only loopback, same-origin requests from the host's own Web UI (other callers get 403).
 
 Each `respond` carries a globally unique transport id as well as the host interaction's `rpcId`. The extension routes its receipt only to the panel that initiated it and rejects pending responses on timeout, panel closure, or bridge disconnection.
 

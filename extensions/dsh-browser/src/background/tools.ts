@@ -112,6 +112,7 @@ export interface TabManagementContext {
   unrestrictedAccess: boolean
   /** Controlled tab for the calling session, when one still exists. */
   controlledTabId?: number
+  controlledTabIds?: number[]
   /** Rebind subsequent tools to one existing tab without activating it. */
   followTab?: (tab: chrome.tabs.Tab) => void | Promise<void>
   /** Mark the point after which a state-changing operation cannot be withdrawn. */
@@ -601,7 +602,7 @@ async function dispatchTabManagementTool(
         windowId: tab.windowId,
         index: tab.index,
         active: tab.active,
-        controlled: tab.id === context.controlledTabId,
+        controlled: tab.id === context.controlledTabId || context.controlledTabIds?.includes(tab.id) === true,
         title: tab.title ?? '',
         url: tabUrl(tab),
       }))

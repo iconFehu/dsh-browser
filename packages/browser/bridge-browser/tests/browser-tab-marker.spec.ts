@@ -9,6 +9,7 @@ describe('browser tab prompt marker', () => {
     }
     expect(extractBrowserTabMarker(input)).toEqual({
       tabRef: 'tab-v1-7',
+      tabRefs: ['tab-v1-7'],
       payload: {
         sessionId: 's1',
         content: [{ type: 'text', text: '请总结 ' }],
@@ -26,5 +27,13 @@ describe('browser tab prompt marker', () => {
     const result = extractBrowserTabMarker(input)
     expect(result.payload).not.toBe(input)
     expect(input.content[0].text).toBe('[[dsh-browser-tab:tab-v1-2]]go')
+  })
+
+  it('extracts all selected tabs without leaking markers into the prompt', () => {
+    const result = extractBrowserTabMarker({ content: [
+      { type: 'text', text: 'Compare [[dsh-browser-tab:tab-v1-1]] and [[dsh-browser-tab:tab-v1-2]]' },
+    ] })
+    expect(result.tabRefs).toEqual(['tab-v1-1', 'tab-v1-2'])
+    expect(result.payload).toEqual({ content: [{ type: 'text', text: 'Compare and ' }] })
   })
 })

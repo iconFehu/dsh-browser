@@ -60,7 +60,7 @@ npx @deepseek-ai/dsh@0.1.5-rc.2 web
 - 客户端 → 服务端：`hello`（认证+caps）、`rpc`（网关方法透传）、`respond`（按 RPC id 结算宿主交互）、`capability.result`、`pong`。
 - 服务端 → 客户端：`hello.ok`（回显协商后的 caps）、`rpc.result`、`respond.result`（相关联的受理结果或错误）、`event`（由 dsh Remote 流与 waterfall 投影而来的 bridge 内部事件）、`capability.call`（`capability` + `method` + `args`）、`capability.cancel`、`ping`、`error`。
 
-如果 `session.prompt` 的文本里含有 `[[dsh-browser-tab:<ref>]]`，bridge 会先去掉这个标记，再通过 `management.tabs.bind` 把该会话绑定到对应标签页。Web 客户端的 `@tab` 选择框从 `/ext/browser-tabs` 读取候选 ref；这个接口只响应来自宿主自身 Web UI 的回环同源请求，其他请求一律返回 403。
+提示词中的多个 `[[dsh-browser-tab:<ref>]]` 标记会在模型步骤前移除，并将对应标签页全部绑定到会话。最后选择的标签页是当前目标；可用 `management.tabs.activate` 在会话的标签页之间切换。Web 客户端的 `@tab` 选择框从 `/ext/browser-tabs` 读取候选 ref；这个接口只响应来自宿主自身 Web UI 的回环同源请求，其他请求一律返回 403。
 
 每个 `respond` 同时携带全局唯一的传输 id 与宿主交互的 `rpcId`。扩展只把回执路由给发起操作的面板，并在超时、面板关闭或桥断线时拒绝尚未完成的响应。
 

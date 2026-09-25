@@ -168,8 +168,8 @@ const STORAGE_KEY = 'dshSettings'
 const TAB_AFFINITY_STORAGE_KEY = 'dshTabAffinity'
 
 type StoredTabAffinity =
-  | { controlledTabId: number; keptActiveTabId?: number; pinned?: true; sessionTabs?: Record<string, AffinityTab>; focusedSessionId?: string }
-  | { lost: true; sessionTabs?: Record<string, AffinityTab>; focusedSessionId?: string }
+  | { controlledTabId: number; keptActiveTabId?: number; pinned?: true; sessionTabs?: Record<string, AffinityTab>; sessionMembers?: Record<string, AffinityTab[]>; focusedSessionId?: string }
+  | { lost: true; sessionTabs?: Record<string, AffinityTab>; sessionMembers?: Record<string, AffinityTab[]>; focusedSessionId?: string }
 
 let settings: Settings = { ...SETTINGS_DEFAULTS }
 let unrestrictedAccessActive = SETTINGS_DEFAULTS.unrestrictedBrowserAccess
@@ -586,6 +586,7 @@ function summarizeTab(tab: chrome.tabs.Tab): AffinityTab | null {
 function storedAffinity(): StoredTabAffinity | null {
   const state = tabAffinity.snapshot()
   const sessionTabs = tabAffinity.sessionMap()
+  const sessionMembers = tabAffinity.sessionMembersMap()
   const hasSessionTabs = Object.keys(sessionTabs).length > 0
   const focusedSessionId = tabAffinity.focusedSession()
   const focus = focusedSessionId === null ? {} : { focusedSessionId }
@@ -597,12 +598,13 @@ function storedAffinity(): StoredTabAffinity | null {
         : {}),
       ...(state.pinned ? { pinned: true as const } : {}),
       ...(hasSessionTabs ? { sessionTabs } : {}),
+      ...(hasSessionTabs ? { sessionMembers } : {}),
       ...focus,
     }
   }
   return state.status === 'lost'
-    ? { lost: true, ...(hasSessionTabs ? { sessionTabs } : {}), ...focus }
-    : (hasSessionTabs ? { lost: true, sessionTabs, ...focus } : null)
+    ? { lost: true, ...(hasSessionTabs ? { sessionTabs, sessionMembers } : {}), ...focus }
+    : (hasSessionTabs ? { lost: true, sessionTabs, sessionMembers, ...focus } : null)
 }
 
 function persistTabAffinity(): void {
@@ -670,6 +672,7 @@ async function restoreTabAffinity(): Promise<void> {
     if (typeof controlledTabId === 'number' && Number.isInteger(controlledTabId) && controlledTabId >= 0) {
       const keptActiveTabId = (candidate as { keptActiveTabId?: unknown }).keptActiveTabId
       const sessionTabs = (candidate as { sessionTabs?: Record<string, AffinityTab> }).sessionTabs
+      const sessionMembers = (candidate as { sessionMembers?: Record<string, AffinityTab[]> }).sessionMembers
       record = {
         controlledTabId,
         ...(typeof keptActiveTabId === 'number' && Number.isInteger(keptActiveTabId) && keptActiveTabId >= 0
@@ -677,13 +680,16 @@ async function restoreTabAffinity(): Promise<void> {
           : {}),
         ...((candidate as { pinned?: unknown }).pinned === true ? { pinned: true as const } : {}),
         ...(typeof sessionTabs === 'object' && sessionTabs !== null ? { sessionTabs } : {}),
+        ...(typeof sessionMembers === 'object' && sessionMembers !== null ? { sessionMembers } : {}),
         ...focus,
       }
     } else if ((candidate as { lost?: unknown } | undefined)?.lost === true) {
       const sessionTabs = (candidate as { sessionTabs?: Record<string, AffinityTab> }).sessionTabs
+      const sessionMembers = (candidate as { sessionMembers?: Record<string, AffinityTab[]> }).sessionMembers
       record = {
         lost: true,
         ...(typeof sessionTabs === 'object' && sessionTabs !== null ? { sessionTabs } : {}),
+        ...(typeof sessionMembers === 'object' && sessionMembers !== null ? { sessionMembers } : {}),
         ...focus,
       }
     }
@@ -706,6 +712,22 @@ async function restoreTabAffinity(): Promise<void> {
       }
     }
     tabAffinity.restoreSessionTabs(restoredSessions)
+  }
+  if (record?.sessionMembers !== undefined) {
+    const restoredMembers: Record<string, AffinityTab[]> = {}
+    for (const [sid, storedTabs] of Object.entries(record.sessionMembers)) {
+      if (!Array.isArray(storedTabs)) continue
+      const liveTabs: AffinityTab[] = []
+      for (const storedTab of storedTabs) {
+        if (typeof storedTab?.tabId !== 'number' || !Number.isInteger(storedTab.tabId) || storedTab.tabId < 0) continue
+        try {
+          const live = summarizeTab(await chrome.tabs.get(storedTab.tabId))
+          if (live !== null) liveTabs.push(live)
+        } catch { /* closed tab */ }
+      }
+      restoredMembers[sid] = liveTabs
+    }
+    tabAffinity.restoreSessionMembers(restoredMembers)
   }
   tabAffinity.restoreFocusedSession(record?.focusedSessionId ?? null)
 
@@ -887,10 +909,15 @@ function bindOpenedTab(
   const summary = summarizeTab(tab)
   if (summary === null) return false
   const sid = sessionId?.trim()
-  bindOpenedTabAffinity(tabAffinity, summary, {
-    active: options.active,
-    sessionId: sid,
-  })
+  if (sid !== undefined && sid !== '' && tabAffinity.getSessionTab(sid) !== undefined) {
+    tabAffinity.addSessionTab(sid, summary)
+    if (options.active !== false) tabAffinity.selectSessionTab(sid, summary)
+  } else {
+    bindOpenedTabAffinity(tabAffinity, summary, {
+      active: options.active,
+      sessionId: sid,
+    })
+  }
   if (sid !== undefined && sid !== '') {
     void pageSessionContexts.ready.then(() => {
       pageSessionContexts.bind(sid, { id: summary.tabId, ...summary })
@@ -1080,6 +1107,20 @@ async function followModelSelectedTab(tab: chrome.tabs.Tab, sessionId?: string):
   const summary = summarizeTab(tab)
   if (summary === null) throw new Error('the selected tab has no usable identifier')
   await pageSessionContexts.ready
+  if (sessionId !== undefined && tabAffinity.selectSessionTab(sessionId, summary)) {
+    pageSessionContexts.bind(sessionId, { id: summary.tabId, ...summary })
+    persistTabAffinity()
+    broadcastTabAffinity()
+    return
+  }
+  if (sessionId !== undefined) {
+    tabAffinity.addSessionTab(sessionId, summary)
+    tabAffinity.selectSessionTab(sessionId, summary)
+    pageSessionContexts.bind(sessionId, { id: summary.tabId, ...summary })
+    persistTabAffinity()
+    broadcastTabAffinity()
+    return
+  }
   commitTabAffinityRebind(summary, sessionId, 'background')
 }
 
@@ -1095,13 +1136,21 @@ async function listBrowserTabRefs(): Promise<BrowserTabRef[]> {
 }
 
 /** Bind the session to the tab the user picked by opaque ref. */
-async function bindTabRef(ref: string, sessionId?: string): Promise<void> {
+async function bindTabRef(ref: string, sessionId?: string, append = false): Promise<AffinityTab> {
   const tabs = await chrome.tabs.query({})
   const selected = tabs.find((tab) => tabRefFromChrome(tab)?.ref === ref)
   const summary = selected === undefined ? null : summarizeTab(selected)
   if (summary === null) throw new Error('The selected browser tab is no longer available')
   await pageSessionContexts.ready
-  commitTabAffinityRebind(summary, sessionId, 'active')
+  if (append && sessionId !== undefined) {
+    tabAffinity.addSessionTab(sessionId, summary)
+    pageSessionContexts.bind(sessionId, { id: summary.tabId, ...summary })
+    persistTabAffinity()
+    broadcastTabAffinity()
+  } else {
+    commitTabAffinityRebind(summary, sessionId, 'active')
+  }
+  return summary
 }
 
 /** 把协商的快照预算下发到受控页（尚未绑定时使用活动页）。 */
@@ -1162,8 +1211,8 @@ function routeToolCall(call: ToolCall): void {
   }
   if (call.name === 'management.tabs.bind') {
     const ref = typeof call.args.ref === 'string' ? call.args.ref : ''
-    void bindTabRef(ref, call.sessionId).then(
-      () => bridge?.send({ t: 'capability.result', id: call.id, ok: true, result: { text: 'Browser tab bound.' } }),
+    void bindTabRef(ref, call.sessionId, call.args.append === true).then(
+      (tab) => bridge?.send({ t: 'capability.result', id: call.id, ok: true, result: { text: JSON.stringify(tab) } }),
       (error: unknown) => bridge?.send({ t: 'capability.result', id: call.id, ok: false,
         error: { code: 'action-failed', message: error instanceof Error ? error.message : String(error) } }),
     )
@@ -1209,6 +1258,9 @@ function routeToolCall(call: ToolCall): void {
     const controlledTabId = call.sessionId === undefined
       ? affinity.controlled?.tabId
       : tabAffinity.getSessionTab(call.sessionId)?.tabId
+    const controlledTabIds = call.sessionId === undefined
+      ? controlledTabId === undefined ? [] : [controlledTabId]
+      : tabAffinity.getSessionTabs(call.sessionId).map((tab) => tab.tabId)
     return dispatchToolCall(
       call,
       sharePageContent,
@@ -1220,6 +1272,7 @@ function routeToolCall(call: ToolCall): void {
       {
         unrestrictedAccess,
         ...(controlledTabId === undefined ? {} : { controlledTabId }),
+        controlledTabIds,
         followTab: (tab) => followModelSelectedTab(tab, call.sessionId),
         commitAction,
         rollbackActionCommit,
@@ -1529,9 +1582,14 @@ chrome.runtime.onConnect.addListener((port) => {
           : sessionSnapshotRefreshes.get(rpcSessionId) ?? Promise.resolve()
         const prepare = rpcMsg.method === 'session.prompt'
           ? Promise.resolve().then(async () => {
-              const requestedRef = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
-                ? (rpcMsg.payload as { tabRef?: unknown }).tabRef : undefined
-              if (typeof requestedRef === 'string' && rpcSessionId !== undefined) await bindTabRef(requestedRef, rpcSessionId)
+              const requested = typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null
+                ? rpcMsg.payload as { tabRef?: unknown; tabRefs?: unknown } : {}
+              const requestedRefs = Array.isArray(requested.tabRefs)
+                ? requested.tabRefs.filter((ref): ref is string => typeof ref === 'string')
+                : typeof requested.tabRef === 'string' ? [requested.tabRef] : []
+              if (rpcSessionId !== undefined) {
+                for (const ref of [...new Set(requestedRefs)]) await bindTabRef(ref, rpcSessionId, true)
+              }
               await refresh
               return rpcSessionId === undefined || tabAffinity.getSessionTab(rpcSessionId) !== undefined
             })
@@ -1539,8 +1597,8 @@ chrome.runtime.onConnect.addListener((port) => {
         void prepare.then((ready) => {
           if (!ready) throw new Error('This session is not bound to a live browser tab')
           // tabRef is extension-local; the gateway prompt schema never sees it.
-          const payload = rpcMsg.method === 'session.prompt' && typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null && 'tabRef' in rpcMsg.payload
-            ? (({ tabRef: _tabRef, ...rest }) => rest)(rpcMsg.payload as Record<string, unknown>)
+          const payload = rpcMsg.method === 'session.prompt' && typeof rpcMsg.payload === 'object' && rpcMsg.payload !== null && ('tabRef' in rpcMsg.payload || 'tabRefs' in rpcMsg.payload)
+            ? (({ tabRef: _tabRef, tabRefs: _tabRefs, ...rest }) => rest)(rpcMsg.payload as Record<string, unknown>)
             : rpcMsg.payload
           return gatewayRpc(rpcMsg.method, payload)
         }).then(

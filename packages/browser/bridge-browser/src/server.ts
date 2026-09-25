@@ -481,8 +481,8 @@ export class BridgeServer {
     this.deps.logger?.info('bridge.rpc.received', 'RPC request received', { requestId: frame.id, rpcId: frame.id, metadata: { method: frame.method } })
     try {
       const prepared = frame.method === 'session.prompt' ? extractBrowserTabMarker(frame.payload) : { payload: frame.payload }
-      if (prepared.tabRef !== undefined) {
-        await this.requestTool('management.tabs.bind', { ref: prepared.tabRef }, conn.abort.signal, this.deps.toolTimeoutMs, sessionIdFromPayload(frame.payload))
+      for (const ref of prepared.tabRefs ?? []) {
+        await this.requestTool('management.tabs.bind', { ref, append: true }, conn.abort.signal, this.deps.toolTimeoutMs, sessionIdFromPayload(frame.payload))
       }
       const result = await this.deps.api.call({
         rpcId: frame.id,
@@ -550,23 +550,24 @@ function sessionIdFromPayload(payload: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
-/** Strip one `[[dsh-browser-tab:<ref>]]` marker from a prompt, returning the ref. */
-export function extractBrowserTabMarker(payload: unknown): { payload: unknown; tabRef?: string } {
+/** Strip every browser-tab marker from a prompt, retaining their order. */
+export function extractBrowserTabMarker(payload: unknown): { payload: unknown; tabRef?: string; tabRefs?: string[] } {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return { payload }
   const root = payload as Record<string, unknown>
   const content = root.content
   if (!Array.isArray(content)) return { payload }
-  let tabRef: string | undefined
+  const tabRefs: string[] = []
   const nextContent = content.map((part) => {
     if (typeof part !== 'object' || part === null || Array.isArray(part)) return part
     const record = part as Record<string, unknown>
     if (typeof record.text !== 'string') return part
-    const match = /\[\[dsh-browser-tab:([^\]]+)\]\]\s*/.exec(record.text)
-    if (match === null) return part
-    tabRef = match[1]
-    return { ...record, text: record.text.replace(match[0], '') }
+    const text = record.text.replace(/\[\[dsh-browser-tab:([^\]]+)\]\]\s*/g, (_match, ref: string) => {
+      if (!tabRefs.includes(ref)) tabRefs.push(ref)
+      return ''
+    })
+    return text === record.text ? part : { ...record, text }
   })
-  return tabRef === undefined ? { payload } : { payload: { ...root, content: nextContent }, tabRef }
+  return tabRefs.length === 0 ? { payload } : { payload: { ...root, content: nextContent }, tabRef: tabRefs[0]!, tabRefs }
 }
 
 function browserSnapshotPayload(payload: unknown): { sessionId: string; snapshot: string } | undefined {

@@ -629,7 +629,7 @@ export function App(): React.JSX.Element {
   const [browserTabs, setBrowserTabs] = useState<BrowserTabRef[]>([])
   const [tabPicker, setTabPicker] = useState(false)
   const [tabQuery, setTabQuery] = useState('')
-  const [selectedTabRef, setSelectedTabRef] = useState<string | null>(null)
+  const [selectedTabs, setSelectedTabs] = useState<BrowserTabRef[]>([])
   const input = draft.text
   const draftImages = draft.images
   const matchingTabs = browserTabs.filter((tab) => `${tab.title} ${tab.url}`.toLocaleLowerCase().includes(tabQuery.toLocaleLowerCase())).slice(0, 8)
@@ -1389,7 +1389,7 @@ export function App(): React.JSX.Element {
     const submittedSelection = textOverride === undefined ? selection : null
     const id = sessionRef.current
     // busy state 是异步的：连续回车可能都通过 state 检查——用 ref 同步锁。
-    if ((text === '' && submittedImages.length === 0 && submittedSelection === null)
+    if ((text === '' && submittedImages.length === 0 && submittedSelection === null && selectedTabs.length === 0)
       || busy || addingImagesRef.current || sendingRef.current || sessionChangingRef.current || id === null) return
     sendingRef.current = true
     const submittedDraft: ComposerDraft<DraftImage> = { text, images: submittedImages }
@@ -1410,9 +1410,9 @@ export function App(): React.JSX.Element {
           submittedImages,
         ),
         ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
-        ...(selectedTabRef === null ? {} : { tabRef: selectedTabRef }),
+        ...(selectedTabs.length === 0 ? {} : { tabRefs: selectedTabs.map((tab) => tab.ref) }),
       })
-      setSelectedTabRef(null)
+      setSelectedTabs([])
       if (submittedSelection !== null) {
         // Keep the background authoritative while the prompt is in flight.
         // Conditional clearing cannot consume a newer highlight captured in
@@ -2175,6 +2175,17 @@ export function App(): React.JSX.Element {
               })}
             </div>
           )}
+          {selectedTabs.length > 0 && (
+            <div className="draft-images" aria-label={locale === 'zh' ? '已选择的标签页' : 'Selected browser tabs'}>
+              {selectedTabs.map((tab) => (
+                <span className="draft-image" key={tab.ref}>
+                  {tab.title || tab.url}
+                  <button type="button" aria-label={`${locale === 'zh' ? '移除' : 'Remove'} ${tab.title || tab.url}`}
+                    onClick={() => setSelectedTabs((current) => current.filter((item) => item.ref !== tab.ref))}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
           <textarea
             value={input}
             onChange={(e) => {
@@ -2203,7 +2214,7 @@ export function App(): React.JSX.Element {
                   const at = input.lastIndexOf('@')
                   const next = `${input.slice(0, at)}@${tab.title || tab.url} `
                   setDraft((current) => ({ ...current, text: next }))
-                  setSelectedTabRef(tab.ref)
+                  setSelectedTabs((current) => current.some((item) => item.ref === tab.ref) ? current : [...current, tab])
                   setTabPicker(false)
                 }}>
                   <strong>{tab.title || tab.url}</strong><small>{tab.url}</small>
