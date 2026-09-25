@@ -15,7 +15,7 @@ content script 管线以纯文本读取并操作页面。含 open shadow DOM 或
 - **默认关闭。** 设置开关 `cdpEnabled`（默认 `false`，仅 Chrome 渲染）门控一切；Chrome manifest 增 `debugger` 与 `downloads`，Firefox manifest 不含（其工具调用返回 `feature-unavailable`）。
 - **只做观察。** 点击、输入、滚动与导航保持既有高层 content script 管线不动——即 Codex 的分工。CDP 仅附加到受控标签页观察：`cdp.dom`（逐帧深层文本读取，含 open shadow DOM 与无法注入的 iframe，不产清单）、`cdp.diagnostics`（console/Log/网络失败）、`cdp.network`（请求清单；`includeBodies` 拉取截断的 `Network.getResponseBody` 文本并带敏感数据警告）、`cdp.performance`（计数器增量）、`cdp.captureScreenshot`/`cdp.exportPdf`（`Page.captureScreenshot`/`Page.printToPDF`，经**保存对话框**导出本地文件）。
 - **文本仍是文本。** 观察输出有界并包进不可信边界；捕获只落本地、绝不进模型通道。未来 dsh 若支持多模态工具结果可内联；v1 契约不含。
-- **模型入口。** 模型通过 `cdp` 能力工具使用这些观察：`cdp.call` 配允许名单内的方法（`Accessibility.getFullAXTree`、`DOM.getDocument`/`getOuterHTML`、`Network.*`、`Performance.*`、`Page.captureScreenshot`、`Page.printToPDF`）时，由 `resolveCdpCall` 转成对应的观察工具；`cdp.events` 读取诊断。其他方法一律拒绝。
+- **模型入口。** 模型通过 `cdp` 能力工具使用这些观察：`cdp.call` 配允许名单内的方法（`Accessibility.getFullAXTree`、`DOM.getDocument`/`getOuterHTML`、`Network.enable`/`disable`/`getResponseBody`、`Performance.*`、`Page.captureScreenshot`、`Page.printToPDF`）时，由 `resolveCdpCall` 转成对应的观察工具；`cdp.events` 读取诊断。其他方法一律拒绝。
 - **生命周期。** `cdp/manager.ts` 在观察工具执行时惰性附加，要求开发者模式 + 面板在开 + http(s) 受控页；侧栏关闭、开关关闭、受控页被关闭/替换或导航离开 http(s) 时分离。附加会暂停该标签页用户自己的 DevTools——设置文案已提示。
 - **失败不回退。** 被门禁/不支持时返回新增的 `feature-unavailable` 错误码。
 

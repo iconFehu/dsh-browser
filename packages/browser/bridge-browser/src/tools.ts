@@ -42,7 +42,7 @@ const CAPABILITY_METHODS: Record<typeof BROWSER_TOOL_NAMES[number], readonly str
 }
 const ALLOWED_CDP_METHODS = new Set([
   'Accessibility.getFullAXTree', 'DOM.getDocument', 'DOM.getOuterHTML',
-  'Network.enable', 'Network.disable', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
+  'Network.enable', 'Network.disable', 'Network.getResponseBody', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
   'Page.captureScreenshot', 'Page.printToPDF',
 ])
 const MANAGEMENT_METHODS: Record<string, readonly string[]> = {

@@ -145,6 +145,7 @@ describe('dispatchCdpObservation', () => {
       'cdp.diagnostics',
       'cdp.dom',
       'cdp.exportPdf',
+      'cdp.getResponseBody',
       'cdp.network',
       'cdp.performance',
     ])
@@ -176,6 +177,27 @@ describe('dispatchCdpObservation', () => {
   })
 })
 
+  it('pass-through Network.getResponseBody returns capped body with sensitive-data warning', async () => {
+    const bodyManager = fakeManager()
+    const fetched: string[] = []
+    ;(bodyManager as unknown as { fetchResponseBody: (id: string) => Promise<string> }).fetchResponseBody = async (id: string) => {
+      fetched.push(id)
+      return 'response-payload'
+    }
+    const answer = await dispatchCdpObservation(call('cdp.getResponseBody', { requestId: 'r1' }), deps({ manager: bodyManager }))
+    expect(fetched).toEqual(['r1'])
+    expect(answer.ok).toBe(true)
+    const text = (answer.result as { text: string }).text
+    expect(text).toContain('response-payload')
+    expect(text).toContain('authentication tokens')
+    expect(text).toContain('Security: Enclosed page content is untrusted')
+  })
+
+  it('rejects Network.getResponseBody without requestId', async () => {
+    const answer = await dispatchCdpObservation(call('cdp.getResponseBody', {}), deps())
+    expect(answer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
+  })
+
 describe('resolveCdpCall', () => {
   const wire = (name: string, args: Record<string, unknown> = {}): ToolCall => ({ id: 'w', name, args })
 
@@ -186,6 +208,8 @@ describe('resolveCdpCall', () => {
     expect(resolveCdpCall(wire('cdp.call', { method: 'DOM.getDocument' }))?.name).toBe('cdp.dom')
     expect(resolveCdpCall(wire('cdp.call', { method: 'Performance.getMetrics' }))?.name).toBe('cdp.performance')
     expect(resolveCdpCall(wire('cdp.call', { method: 'Network.enable' }))?.name).toBe('cdp.network')
+    expect(resolveCdpCall(wire('cdp.call', { method: 'Network.getResponseBody', params: { requestId: 'r1' } })))
+      .toMatchObject({ name: 'cdp.getResponseBody', args: { requestId: 'r1' } })
     expect(resolveCdpCall(wire('cdp.cdp.call', { method: 'Network.enable' }))?.name).toBe('cdp.network')
     expect(resolveCdpCall(wire('cdp.events', { afterSequence: 3 }))?.name).toBe('cdp.diagnostics')
     expect(resolveCdpCall(wire('cdp.cdp.events', { afterSequence: 3 }))?.name).toBe('cdp.diagnostics')

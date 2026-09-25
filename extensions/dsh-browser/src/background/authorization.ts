@@ -12,6 +12,7 @@ const PAGE_READS = new Set([
   // CDP observation reads share the read-sharing policy.
   'cdp.diagnostics',
   'cdp.network',
+  'cdp.getResponseBody',
   'cdp.performance',
   'cdp.dom',
   'cdp.captureScreenshot',

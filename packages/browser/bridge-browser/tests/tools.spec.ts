@@ -91,7 +91,7 @@ describe('registerBrowserTools', () => {
     const args = (cdp.parameters as { properties: { args: { properties: { method: { enum: string[] } }; required?: string[] } } }).properties.args
     expect(args.properties.method.enum).toEqual([
       'Accessibility.getFullAXTree', 'DOM.getDocument', 'DOM.getOuterHTML',
-      'Network.enable', 'Network.disable', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
+      'Network.enable', 'Network.disable', 'Network.getResponseBody', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
       'Page.captureScreenshot', 'Page.printToPDF',
     ])
     expect(args.required ?? []).not.toContain('method')
