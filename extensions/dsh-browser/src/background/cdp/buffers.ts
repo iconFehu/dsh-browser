@@ -57,7 +57,7 @@ export function renderDiagnostics(entries: PageDiagnostic[], maxChars = 3_000): 
   return output.trimEnd()
 }
 
-/** Render observed requests as bounded text; URLs are pre-redacted. */
+/** Render observed requests as bounded text; each line includes requestId; URLs are redacted. */
 export function renderNetwork(entries: NetworkObservation[], maxChars = 6_000, maxEntries = 40): string {
   if (entries.length === 0) return 'No network requests observed yet on this page.'
   const lines: string[] = []
@@ -65,7 +65,7 @@ export function renderNetwork(entries: NetworkObservation[], maxChars = 6_000, m
   for (const entry of entries) {
     if (lines.length >= maxEntries) break
     const status = entry.status !== null ? `HTTP ${entry.status}` : entry.errorText !== null ? `failed: ${entry.errorText}` : 'pending'
-    const line = `${entry.method} ${redactUrl(entry.url)} → ${status}`
+    const line = `requestId=${entry.requestId} ${entry.method} ${redactUrl(entry.url)} → ${status}`
     if (chars + line.length + 1 > maxChars) break
     lines.push(line)
     chars += line.length + 1

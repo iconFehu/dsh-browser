@@ -199,7 +199,7 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
             if (entry.requestId === '') continue
             try {
               const body = await deps.manager.fetchResponseBody(entry.requestId)
-              bodies.push(`--- response body for ${entry.method} ${redactUrl(entry.url)} ---\n${body}`)
+              bodies.push(`--- response body for requestId=${entry.requestId} ${entry.method} ${redactUrl(entry.url)} ---\n${body}`)
             } catch {
               // Bodies expire; skip quietly.
             }

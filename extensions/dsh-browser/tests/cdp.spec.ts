@@ -190,8 +190,11 @@ describe('buffers and renderers', () => {
       { requestId: '1', method: 'GET', url: 'https://x.example/data?token=abc', status: 200, errorText: null, at: 1 },
     ]
     const networkText = renderNetwork(network)
+    expect(networkText).toContain('requestId=1')
+    expect(networkText).toContain('GET')
     expect(networkText).toContain('HTTP 200')
     expect(networkText).not.toContain('token=abc')
+    expect(networkText).toMatch(/^requestId=1 GET https:\/\/x\.example\/data → HTTP 200$/)
     expect(renderNetwork([])).toContain('No network requests')
   })
 
