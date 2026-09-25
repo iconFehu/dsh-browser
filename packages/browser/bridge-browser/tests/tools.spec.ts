@@ -60,7 +60,7 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const parameters = registered.find(({ name }) => name === 'management')!.definition.parameters as { properties: { namespace: { enum: string[] }; method: { enum: string[] }; args: { properties: Record<string, unknown> } } }
     expect(parameters.properties.namespace.enum).toEqual(['windows', 'tabs', 'tabGroups', 'bookmarks', 'history', 'downloads', 'events'])
-    expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'create', 'ungroup', 'search', 'delete', 'cancel', 'events'])
+    expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'group', 'ungroup', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'create', 'search', 'delete', 'cancel', 'events'])
     expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'pinned', 'muted', 'autoDiscardable', 'highlighted', 'openerTabId', 'selected', 'index', 'frame', 'text', 'replace', 'key', 'direction', 'amount', 'ms', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
   })
 
@@ -94,6 +94,46 @@ describe('registerBrowserTools', () => {
       { method: 'tabs.update', args: { tabId: 7, pinned: true, muted: false } },
       { method: 'tabs.update', args: { tabId: 7, url: 'https://example.com/', highlighted: true, selected: true, autoDiscardable: false, openerTabId: 2 } },
     ])
+  })
+
+  it('accepts tabs.group/ungroup and requires tabIds for tabGroups.create', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const tool = registered.find(({ name }) => name === 'management')!.definition
+    const exec = { signal: new AbortController().signal }
+    const run = (namespace: string, method: string, args: Record<string, unknown>) =>
+      (tool.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ namespace, method, args }, exec)
+
+    await expect(run('tabs', 'group', {})).rejects.toThrow('requires tabIds')
+    await expect(run('tabs', 'ungroup', { tabIds: [] })).rejects.toThrow('requires tabIds')
+    await expect(run('tabGroups', 'create', { title: 'Empty' })).rejects.toThrow('requires tabIds')
+    await expect(run('tabGroups', 'create', {})).rejects.toThrow('Chrome cannot create empty')
+    expect(requestTool).not.toHaveBeenCalled()
+
+    await run('tabs', 'group', { tabIds: [11, 12] })
+    await run('tabs', 'group', { tabIds: [11], groupId: 3 })
+    await run('tabs', 'ungroup', { tabIds: [11] })
+    await run('tabGroups', 'create', { tabIds: [11, 12], title: 'Research', color: 'blue' })
+    expect(requestTool.mock.calls.map(([, args]) => args)).toEqual([
+      { method: 'tabs.group', args: { tabIds: [11, 12] } },
+      { method: 'tabs.group', args: { tabIds: [11], groupId: 3 } },
+      { method: 'tabs.ungroup', args: { tabIds: [11] } },
+      { method: 'tabGroups.create', args: { tabIds: [11, 12], title: 'Research', color: 'blue' } },
+    ])
+  })
+
+  it('describes the preferred tab-group flow in the management tool', () => {
+    const { ctx, registered, bridge } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const management = registered.find(({ name }) => name === 'management')!.definition
+    const description = String(management.description)
+    expect(description).toMatch(/tabs\.group/)
+    expect(description).toMatch(/tabGroups\.update/)
+    expect(description).toMatch(/empty groups|cannot create empty/i)
+    const args = (management.parameters as { properties: { args: { properties: Record<string, { description?: string }> } } }).properties.args.properties
+    expect(args.tabIds.description).toMatch(/tabs\.group/)
+    expect(args.groupId.description).toMatch(/tabs\.list/)
+    expect(args.groupId.description).toMatch(/-1|TAB_GROUP_ID_NONE/)
   })
 
   it('exposes native argument schemas for non-management capabilities', () => {

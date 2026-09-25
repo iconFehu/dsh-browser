@@ -41,4 +41,48 @@ describe('api tools', () => {
     expect(authorize).not.toHaveBeenCalled()
     expect(chrome.search).toHaveBeenCalledWith({ query: 'docs' })
   })
+
+  it('requires tabIds for tabGroups.create and does not hijack the first window tab', async () => {
+    const group = vi.fn(async () => 42)
+    const update = vi.fn(async (id: number) => ({ id }))
+    const query = vi.fn(async () => [{ id: 99, title: 'Other' }])
+    vi.stubGlobal('chrome', {
+      tabs: { group, ungroup: vi.fn(), query },
+      tabGroups: { update, query: vi.fn(async () => []) },
+    })
+
+    const missing = await dispatchApiTool({ id: 'g1', name: 'management.tabGroups.create', args: { title: 'Nope' } }, 1, async () => 'approved')
+    expect(missing.ok).toBe(false)
+    expect(String((missing as { error: { message: string } }).error.message)).toMatch(/requires tabIds/)
+    expect(group).not.toHaveBeenCalled()
+    expect(query).not.toHaveBeenCalled()
+
+    const created = await dispatchApiTool(
+      { id: 'g2', name: 'management.tabGroups.create', args: { tabIds: [7, 8], title: 'Research', color: 'green' } },
+      1,
+      async () => 'approved',
+    )
+    expect(created.ok).toBe(true)
+    expect((created.result as { text: string }).text).toContain('[42]')
+    expect((created.result as { text: string }).text).toContain('7, 8')
+    expect(group).toHaveBeenCalledWith({ tabIds: [7, 8] })
+    expect(update).toHaveBeenCalledWith(42, { title: 'Research', color: 'green' })
+  })
+
+  it('dissolves tabGroups by groupId while documenting tabs.ungroup for tabIds', async () => {
+    const ungroup = vi.fn(async () => undefined)
+    const query = vi.fn(async () => [{ id: 7 }, { id: 8 }])
+    vi.stubGlobal('chrome', {
+      tabs: { group: vi.fn(), ungroup, query },
+      tabGroups: { update: vi.fn(), query: vi.fn() },
+    })
+    const missing = await dispatchApiTool({ id: 'u1', name: 'management.tabGroups.ungroup', args: {} }, 1, async () => 'approved')
+    expect(missing.ok).toBe(false)
+    expect(String((missing as { error: { message: string } }).error.message)).toMatch(/tabs\.ungroup/)
+
+    const removed = await dispatchApiTool({ id: 'u2', name: 'management.tabGroups.ungroup', args: { groupId: 3 } }, 1, async () => 'approved')
+    expect(removed.ok).toBe(true)
+    expect(query).toHaveBeenCalledWith({ groupId: 3 })
+    expect(ungroup).toHaveBeenCalledWith([7, 8])
+  })
 })

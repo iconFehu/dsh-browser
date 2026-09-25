@@ -76,7 +76,11 @@ function mockChrome(options: {
   const remove = vi.fn(async () => undefined)
   const getAllFrames = vi.fn(async () => currentFrames())
   vi.stubGlobal('chrome', {
-    tabs: { query, get, sendMessage, update, goBack, goForward, reload, remove },
+    tabs: {
+      query, get, sendMessage, update, goBack, goForward, reload, remove,
+      group: vi.fn(async (options: { tabIds: number | number[]; groupId?: number }) => options.groupId ?? 55),
+      ungroup: vi.fn(async () => undefined),
+    },
     scripting: { executeScript },
     webNavigation: { getAllFrames },
     runtime: {
@@ -95,7 +99,12 @@ function mockChrome(options: {
       listener({ type: 'DSH_CONTENT_READY' }, { tab: { id: tabId }, frameId, documentId } as chrome.runtime.MessageSender)
     }
   }
-  return { emitContentReady, executeScript, get, getAllFrames, goBack, goForward, query, reload, remove, sendMessage, update }
+  const chromeObj = (globalThis as { chrome: { tabs: Record<string, unknown> } }).chrome
+  return {
+    emitContentReady, executeScript, get, getAllFrames, goBack, goForward, query, reload, remove, sendMessage, update,
+    group: chromeObj.tabs.group as ReturnType<typeof vi.fn>,
+    ungroup: chromeObj.tabs.ungroup as ReturnType<typeof vi.fn>,
+  }
 }
 
 afterEach(() => {
@@ -291,6 +300,49 @@ describe('dispatchToolCall', () => {
     expect(chromeMock.get).toHaveBeenCalledTimes(4)
     expect(chromeMock.remove).toHaveBeenCalledWith(12)
     expect(commitAction).toHaveBeenCalledTimes(2)
+  })
+
+  it('lists groupId and pinned, and groups/ungroups tabs via chrome.tabs.group', async () => {
+    const tabs = [
+      managedTab(11, { active: true, pinned: true, groupId: -1, title: 'Inbox', url: 'https://mail.example/inbox' }),
+      managedTab(12, { windowId: 2, groupId: 9, title: 'Docs', url: 'https://docs.example/guide' }),
+    ]
+    const chromeMock = mockChrome({ tabs })
+    const authorize = vi.fn(async () => 'approved' as const)
+    const commitAction = vi.fn()
+    const context = { unrestrictedAccess: false, controlledTabId: 11, commitAction }
+
+    const listed = await dispatchToolCall(
+      { id: 'list-groups', name: 'management.tabs.list', args: {} },
+      'auto', undefined, authorize, undefined, undefined, undefined, context,
+    )
+    const body = (listed.result as { text: string }).text
+    expect(body).toContain('"groupId": -1')
+    expect(body).toContain('"groupId": 9')
+    expect(body).toContain('"pinned": true')
+
+    const grouped = await dispatchToolCall(
+      { id: 'group-tabs', name: 'management.tabs.group', args: { tabIds: [11, 12] } },
+      'auto', undefined, authorize, undefined, undefined, undefined, context,
+    )
+    expect(grouped.ok).toBe(true)
+    expect((grouped.result as { text: string }).text).toContain('group 55')
+    expect(chromeMock.group).toHaveBeenCalledWith({ tabIds: [11, 12] })
+    expect(commitAction).toHaveBeenCalled()
+
+    const intoExisting = await dispatchToolCall(
+      { id: 'group-into', name: 'management.tabs.group', args: { tabIds: 11, groupId: 9 } },
+      'auto', undefined, authorize, undefined, undefined, undefined, context,
+    )
+    expect(intoExisting.ok).toBe(true)
+    expect(chromeMock.group).toHaveBeenCalledWith({ tabIds: 11, groupId: 9 })
+
+    const ungrouped = await dispatchToolCall(
+      { id: 'ungroup-tabs', name: 'management.tabs.ungroup', args: { tabIds: [11, 12] } },
+      'auto', undefined, authorize, undefined, undefined, undefined, context,
+    )
+    expect(ungrouped.ok).toBe(true)
+    expect(chromeMock.ungroup).toHaveBeenCalledWith([11, 12])
   })
 
   it('skips sharing blocks and approval prompts only in unrestricted mode', async () => {

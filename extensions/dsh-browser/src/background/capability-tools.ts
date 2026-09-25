@@ -206,7 +206,7 @@ async function tabsUpdate(call: ToolCall, deps: CapabilityDeps): Promise<ToolAns
     const present = Object.keys(call.args).filter((key) => key !== 'tabId' && call.args[key] !== undefined)
     const hints: string[] = []
     if (present.includes('title')) hints.push('title is not supported (page titles are not writable via tabs.update)')
-    if (present.includes('groupId')) hints.push('groupId belongs to management.tabGroups / tabs.group')
+    if (present.includes('groupId')) hints.push('groupId belongs to management.tabs.group (or tabGroups.update for title/color)')
     if (present.includes('index')) hints.push('index belongs to management.tabs.move')
     const allowed = 'active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected (alias of highlighted), url'
     let message = `management.tabs.update requires at least one of: ${allowed}.`

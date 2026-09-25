@@ -17,7 +17,7 @@ const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Report CAPTCHA, bot-detection, access-denied, and challenge-loop states so the user can resolve them; never try to solve or bypass them.',
   browserAuth: 'Hand a sign-in step to the user: describe the fields; the user types credentials directly on the page and they are never shared with you. Returns only a status such as submitted, declined, expired, or origin_changed.',
   cdp: 'Use allowlisted Chrome DevTools observation and capture methods.',
-  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. tabs.update accepts Chrome tabs.update updateProperties (active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected→highlighted, url); not title/groupId/index. Only methods listed in the schema are available.',
+  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. tabs.update accepts Chrome tabs.update updateProperties (active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected→highlighted, url); not title/groupId/index. Preferred tab-group flow: tabs.list → tabs.group({tabIds}) → tabGroups.update({groupId,title,color}) → tabs.list to verify groupId; do not create empty groups. Only methods listed in the schema are available.',
   pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list inventories observed assets, and bundle saves selected ones into the user\'s Downloads folder (you receive file names, never contents).',
   viewport: 'Read, set, or reset a viewport override for responsive testing (Chrome, requires browser developer mode). Reset overrides before finishing unless the user asked to keep them.',
   visibility: 'Read or change whether the browser window is visible to the user.',
@@ -26,7 +26,7 @@ const METHOD_GUIDE: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Methods: report.',
   browserAuth: 'Methods: request.',
   cdp: 'Methods: call, events. For call, args.method must be one of the listed CDP methods. For events, omit args.method; use args.afterSequence to read later events. Navigation belongs to management.tabs.',
-  management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, click, type, press, scroll, wait, back, forward; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events.',
+  management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, group, ungroup, click, type, press, scroll, wait, back, forward; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events. Tab groups: tabs.group({tabIds, groupId?}) puts tabs in a (new or existing) group; tabs.ungroup({tabIds}) removes tabs from groups; tabGroups.ungroup({groupId}) dissolves a group; tabGroups.create requires tabIds (Chrome cannot create empty groups).', 
   pageAssets: 'Methods: snapshot, getText, list, bundle (bundle needs the inventoryId from list).',
   viewport: 'Methods: get, set, reset.',
   visibility: 'Methods: get, set.',
@@ -47,7 +47,7 @@ const ALLOWED_CDP_METHODS = new Set([
 ])
 const MANAGEMENT_METHODS: Record<string, readonly string[]> = {
   windows: ['list'],
-  tabs: ['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward'],
+  tabs: ['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'group', 'ungroup', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward'],
   tabGroups: ['list', 'create', 'update', 'ungroup'],
   bookmarks: ['search', 'create', 'update', 'delete'],
   history: ['search'],
@@ -63,7 +63,7 @@ const MANAGEMENT_ARG_SCHEMA = {
   properties: {
     url: { type: 'string', description: 'Complete http(s) URL; required by tabs.open and tabs.navigate; also accepted by tabs.update (Chrome updateProperties). javascript: URLs are rejected.' },
     tabId: { type: 'number', description: 'Browser tab id; required by tabs.activate and tabs.update.' },
-    tabIds: { type: 'array', description: 'Non-empty browser tab id array; required by tabs.close.', items: { type: 'number' } },
+    tabIds: { type: 'array', description: 'Non-empty browser tab id array. Required by tabs.close, tabs.group, tabs.ungroup, and tabGroups.create.', items: { type: 'number' } },
     windowId: { type: 'number', description: 'Optional browser window id for tabs.list.' },
     active: { type: 'boolean', description: 'tabs.list: restrict to the active tab. tabs.open: bring the new tab to the front (default true; false opens it in the background). tabs.update: whether the tab should become active (Chrome updateProperties.active).' },
     pinned: { type: 'boolean', description: 'tabs.update only: whether the tab should be pinned (Chrome updateProperties.pinned).' },
@@ -80,8 +80,8 @@ const MANAGEMENT_ARG_SCHEMA = {
     direction: { type: 'string', enum: ['up', 'down', 'top', 'bottom'], description: 'tabs.scroll direction.' },
     amount: { type: 'number', description: 'tabs.scroll pixels; ignored for top and bottom.' },
     ms: { type: 'number', description: 'tabs.wait extra milliseconds after the settle check.' },
-    groupId: { type: 'number', description: 'Tab group id for tabGroups.update. Not a tabs.update field — use tabGroups / tabs.group.' },
-    title: { type: 'string', description: 'Tab group title (tabGroups.update) or bookmark title. Not a tabs.update field — page titles are not writable via Chrome tabs.update.' },
+    groupId: { type: 'number', description: 'Tab group id. tabs.list exposes groupId per tab (-1 / TAB_GROUP_ID_NONE = ungrouped). tabs.group optional groupId adds tabs to an existing group; omit to create a new group. Required by tabGroups.update and tabGroups.ungroup. Not a tabs.update field — use tabs.group / tabGroups.update.' },
+    title: { type: 'string', description: 'Tab group title (tabGroups.create/update) or bookmark title. Not a tabs.update field — page titles are not writable via Chrome tabs.update.' },
     color: { type: 'string', description: 'Tab group color.' },
     collapsed: { type: 'boolean', description: 'Whether the tab group is collapsed.' },
     query: { type: 'string', description: 'Bookmark search query.' },
@@ -129,6 +129,17 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
     if (args.waitMs !== undefined && (typeof args.waitMs !== 'number' || !Number.isSafeInteger(args.waitMs) || args.waitMs < 0 || args.waitMs > 10_000)) throw new Error('management.events waitMs must be an integer from 0 to 10000')
     return
   }
+  if (namespace === 'tabGroups') {
+    if (method === 'create') {
+      const ids = args.tabIds
+      const ok = (typeof ids === 'number' && Number.isSafeInteger(ids) && ids >= 0)
+        || (Array.isArray(ids) && ids.length > 0 && ids.every((id) => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0))
+      if (!ok) throw new Error('management.tabGroups.create requires tabIds (at least one). Chrome cannot create empty tab groups; prefer tabs.group({ tabIds }) then tabGroups.update({ groupId, title, color }).')
+    } else if (method === 'update' || method === 'ungroup') {
+      if (typeof args.groupId !== 'number' || !Number.isSafeInteger(args.groupId)) throw new Error(`management.tabGroups.${method} requires a groupId`)
+    }
+    return
+  }
   if (namespace !== 'tabs') return
   if (method === 'open' || method === 'navigate') {
     if (typeof args.url !== 'string' || !/^https?:\/\//i.test(args.url)) throw new Error(`management.tabs.${method} requires a valid http(s) url`)
@@ -153,7 +164,7 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
       const present = Object.keys(args).filter((key) => key !== 'tabId' && args[key] !== undefined)
       const hints: string[] = []
       if (present.includes('title')) hints.push('title is not supported (page titles are not writable via tabs.update)')
-      if (present.includes('groupId')) hints.push('groupId belongs to management.tabGroups / tabs.group')
+      if (present.includes('groupId')) hints.push('groupId belongs to management.tabs.group (or tabGroups.update for title/color)')
       if (present.includes('index')) hints.push('index belongs to management.tabs.move')
       const allowed = 'active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected (alias of highlighted), url'
       let message = `management.tabs.update requires at least one of: ${allowed}.`
@@ -166,6 +177,14 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
     if (args.tabId !== undefined && (typeof args.tabId !== 'number' || !Number.isSafeInteger(args.tabId) || args.tabId < 0)) throw new Error('management.tabs.reload tabId must be a non-negative integer')
   } else if (method === 'close') {
     if (!Array.isArray(args.tabIds) || args.tabIds.length === 0 || !args.tabIds.every((id) => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0)) throw new Error('management.tabs.close requires a non-empty integer tabIds array')
+  } else if (method === 'group' || method === 'ungroup') {
+    const ids = args.tabIds
+    const ok = (typeof ids === 'number' && Number.isSafeInteger(ids) && ids >= 0)
+      || (Array.isArray(ids) && ids.length > 0 && ids.every((id) => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0))
+    if (!ok) throw new Error(`management.tabs.${method} requires tabIds (a non-negative integer or non-empty integer array)`)
+    if (method === 'group' && args.groupId !== undefined && (typeof args.groupId !== 'number' || !Number.isSafeInteger(args.groupId))) {
+      throw new Error('management.tabs.group groupId must be a safe integer when provided')
+    }
   } else if (method === 'click' || method === 'type') {
     if (typeof args.index !== 'number' || !Number.isSafeInteger(args.index) || args.index < 0) throw new Error(`management.tabs.${method} requires a non-negative integer index from pageAssets.snapshot`)
     if (method === 'type' && typeof args.text !== 'string') throw new Error('management.tabs.type requires text')

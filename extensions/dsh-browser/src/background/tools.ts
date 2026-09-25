@@ -86,6 +86,8 @@ export const TAB_MANAGEMENT_TOOL_NAMES = new Set([
   'management.tabs.list',
   'management.tabs.activate',
   'management.tabs.close',
+  'management.tabs.group',
+  'management.tabs.ungroup',
 ])
 const NAVIGATION_SNAPSHOT_GUIDANCE = 'Navigation completed and the current page snapshot is included below. Use it directly instead of taking an immediate duplicate snapshot.'
 const pendingInjections = new Map<number, Promise<void>>()
@@ -519,6 +521,16 @@ function requestedTabId(args: Record<string, unknown>): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }
 
+/** Normalize tabs.group / tabs.ungroup tabIds (number or number[]). */
+function requestedTabIds(args: Record<string, unknown>): number[] | undefined {
+  const value = args.tabIds
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return [value]
+  if (Array.isArray(value) && value.length > 0 && value.every((id) => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0)) {
+    return value as number[]
+  }
+  return undefined
+}
+
 function tabUrl(tab: chrome.tabs.Tab): string {
   return tab.url ?? tab.pendingUrl ?? ''
 }
@@ -535,13 +547,27 @@ function approvalDisplayUrl(value: string): string {
   }
 }
 
-function tabManagementApproval(call: ToolCall, tab?: chrome.tabs.Tab): ApprovalPrompt {
+function tabManagementApproval(call: ToolCall, tab?: chrome.tabs.Tab, tabIds?: number[]): ApprovalPrompt {
   const locale = getUiLocale()
   if (call.name === 'management.tabs.list') {
     return {
       kind: 'read',
       action: call.name,
       summary: locale === 'zh' ? '读取所有已打开标签页的标题和链接' : 'Read the titles and URLs of all open tabs',
+      origins: [],
+      canTrust: false,
+    }
+  }
+  if (call.name === 'management.tabs.group' || call.name === 'management.tabs.ungroup') {
+    const ids = tabIds ?? []
+    const label = ids.length === 0 ? '?' : ids.join(', ')
+    const grouping = call.name === 'management.tabs.group'
+    return {
+      kind: 'action',
+      action: call.name,
+      summary: grouping
+        ? (locale === 'zh' ? `将标签页 ${label} 加入分组` : `Group tabs ${label}`)
+        : (locale === 'zh' ? `将标签页 ${label} 移出分组` : `Ungroup tabs ${label}`),
       origins: [],
       canTrust: false,
     }
@@ -602,6 +628,9 @@ async function dispatchTabManagementTool(
         windowId: tab.windowId,
         index: tab.index,
         active: tab.active,
+        pinned: tab.pinned === true,
+        // Chrome uses -1 (TAB_GROUP_ID_NONE) for ungrouped tabs; expose consistently.
+        groupId: typeof tab.groupId === 'number' ? tab.groupId : -1,
         controlled: tab.id === context.controlledTabId || context.controlledTabIds?.includes(tab.id) === true,
         title: tab.title ?? '',
         url: tabUrl(tab),
@@ -612,7 +641,45 @@ async function dispatchTabManagementTool(
     }
   }
 
-  const tabId = requestedTabId(call.args)
+  if (call.name === 'management.tabs.group' || call.name === 'management.tabs.ungroup') {
+    const tabIds = requestedTabIds(call.args)
+    if (tabIds === undefined) {
+      return { ok: false, error: { code: 'action-failed', message: `${call.name} requires tabIds (a non-negative integer or non-empty integer array) from management.tabs.list.` } }
+    }
+    if (typeof chrome.tabs.group !== 'function' || typeof chrome.tabs.ungroup !== 'function') {
+      return unavailable('Tab grouping is only available in Chrome (tabGroups).')
+    }
+    const approval = tabManagementApproval(call, undefined, tabIds)
+    const rejected = await authorizeTabManagement(approval, context.unrestrictedAccess, authorize, call, signal)
+    if (rejected !== undefined) return rejected
+    if (isCancelled(call, signal)) return cancelled()
+    try {
+      context.commitAction?.()
+      if (call.name === 'management.tabs.group') {
+        const options: chrome.tabs.GroupOptions = { tabIds: tabIds.length === 1 ? tabIds[0]! : tabIds }
+        if (typeof call.args.groupId === 'number' && Number.isSafeInteger(call.args.groupId)) {
+          options.groupId = call.args.groupId
+        }
+        const groupId = await chrome.tabs.group(options)
+        return {
+          ok: true,
+          result: {
+            text: `Grouped tabs [${tabIds.join(', ')}] into group ${groupId}. Call management.tabGroups.update({ groupId, title, color }) to name it, then management.tabs.list to verify.`,
+          },
+        }
+      }
+      await chrome.tabs.ungroup(tabIds.length === 1 ? tabIds[0]! : tabIds)
+      return {
+        ok: true,
+        result: { text: `Ungrouped tabs [${tabIds.join(', ')}].` },
+      }
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error)
+      return unavailable(`${call.name} failed: ${detail}`)
+    }
+  }
+
+    const tabId = requestedTabId(call.args)
   if (tabId === undefined) {
     return { ok: false, error: { code: 'action-failed', message: 'tabId (or a single-element tabIds) must be a non-negative safe integer returned by management.tabs.list.' } }
   }

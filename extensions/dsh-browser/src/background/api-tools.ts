@@ -329,6 +329,9 @@ export async function history(call: ToolCall): Promise<ToolAnswer> {
  */
 export async function tabGroupsList(): Promise<ToolAnswer> {
   try {
+    if (typeof chrome.tabGroups?.query !== 'function') {
+      return unavailableError('Tab groups are only available in Chrome.')
+    }
     const groups = await chrome.tabGroups.query({})
     if (groups.length === 0) {
       return { ok: true, result: { text: 'No tab groups found.' } }
@@ -342,28 +345,40 @@ export async function tabGroupsList(): Promise<ToolAnswer> {
 }
 
 /**
- * Create a new tab group.
+ * Create a new tab group from explicit tabIds (Chrome cannot create empty groups).
+ * Prefer management.tabs.group({ tabIds }) then tabGroups.update for title/color.
  */
 export async function tabGroupsCreate(call: ToolCall): Promise<ToolAnswer> {
   try {
+    if (typeof chrome.tabs?.group !== 'function' || typeof chrome.tabGroups?.update !== 'function') {
+      return unavailableError('Tab groups are only available in Chrome.')
+    }
+    const raw = call.args.tabIds
+    let tabIds: number[] | undefined
+    if (typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0) tabIds = [raw]
+    else if (Array.isArray(raw) && raw.length > 0 && raw.every((id) => typeof id === 'number' && Number.isSafeInteger(id) && id >= 0)) {
+      tabIds = raw as number[]
+    }
+    if (tabIds === undefined) {
+      return unavailableError('management.tabGroups.create requires tabIds (at least one). Chrome cannot create empty tab groups. Prefer management.tabs.group({ tabIds }) then management.tabGroups.update({ groupId, title, color }).')
+    }
     const title = typeof call.args.title === 'string' ? call.args.title : undefined
-    if (!title) {
-      return unavailableError('title is required.')
-    }
-    const color = typeof call.args.color === 'string' ? call.args.color : 'blue'
-    const windowId = typeof call.args.windowId === 'number' ? call.args.windowId : undefined
+    const color = typeof call.args.color === 'string' ? call.args.color : undefined
+    const collapsed = typeof call.args.collapsed === 'boolean' ? call.args.collapsed : undefined
 
-    // chrome.tabGroups.create is not in @types/chrome, use chrome.tabs.group instead
-    // Find tabs in the window to group
-    const tabs = await chrome.tabs.query({ windowId: windowId ?? chrome.windows.WINDOW_ID_CURRENT })
-    if (tabs.length === 0) {
-      return unavailableError('No tabs found to create group.')
+    const groupId = await chrome.tabs.group({ tabIds: tabIds.length === 1 ? tabIds[0]! : tabIds })
+    const update: chrome.tabGroups.UpdateProperties = {}
+    if (title !== undefined) {
+      if (title.length > 200) return unavailableError('Tab group title must be at most 200 characters.')
+      update.title = title
     }
-    // Group the first tab
-    const groupId = await chrome.tabs.group({ tabIds: [tabs[0].id!] })
-    // Update group properties
-    await chrome.tabGroups.update(groupId, { title, color: color as chrome.tabGroups.ColorEnum })
-    return { ok: true, result: { text: `Tab group created [${groupId}]: ${title}` } }
+    if (color !== undefined) update.color = color as chrome.tabGroups.ColorEnum
+    if (collapsed !== undefined) update.collapsed = collapsed
+    if (Object.keys(update).length > 0) {
+      await chrome.tabGroups.update(groupId, update)
+    }
+    const named = title ? `: ${title}` : ''
+    return { ok: true, result: { text: `Tab group created [${groupId}] with tabs [${tabIds.join(', ')}]${named}.` } }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return unavailableError(`Tab groups create failed: ${msg}`)
@@ -371,22 +386,24 @@ export async function tabGroupsCreate(call: ToolCall): Promise<ToolAnswer> {
 }
 
 /**
- * Remove a tab group (tabs are not closed).
+ * Dissolve a tab group by groupId (tabs stay open).
+ * For removing specific tabs from groups, use management.tabs.ungroup({ tabIds }).
  */
 export async function tabGroupsRemove(call: ToolCall): Promise<ToolAnswer> {
   try {
+    if (typeof chrome.tabs?.ungroup !== 'function') {
+      return unavailableError('Tab groups are only available in Chrome.')
+    }
     const groupId = typeof call.args.groupId === 'number' ? call.args.groupId : undefined
     if (groupId === undefined) {
-      return unavailableError('groupId is required.')
+      return unavailableError('management.tabGroups.ungroup requires groupId. To ungroup specific tabs, use management.tabs.ungroup({ tabIds }).')
     }
-    // chrome.tabGroups.remove is not in @types/chrome, use tabGroups.update with no tabs
-    // Find tabs in the group
     const tabs = await chrome.tabs.query({ groupId })
     if (tabs.length > 0) {
-      // Ungroup the tabs
-      await chrome.tabs.ungroup(tabs.map(t => t.id!))
+      const ids = tabs.map((t) => t.id!).filter((id): id is number => typeof id === 'number')
+      await chrome.tabs.ungroup(ids.length === 1 ? ids[0]! : ids)
     }
-    return { ok: true, result: { text: `Tab group ${groupId} removed.` } }
+    return { ok: true, result: { text: `Tab group ${groupId} removed (tabs ungrouped, not closed).` } }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return unavailableError(`Tab groups remove failed: ${msg}`)
