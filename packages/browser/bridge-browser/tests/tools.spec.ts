@@ -147,7 +147,7 @@ describe('registerBrowserTools', () => {
     expect(Object.keys(pageAssets.properties)).not.toContain('namespace')
   })
 
-  it('documents observation CDP methods and session debugger gate; events omit method', async () => {
+  it('documents CDP methods gated by Browser developer mode; events omit method', async () => {
     const { ctx, registered, bridge, requestTool } = harness()
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition
@@ -157,9 +157,11 @@ describe('registerBrowserTools', () => {
     const args = (cdp.parameters as { properties: { args: { properties: { method: { type: string; description: string; enum?: string[] } }; required?: string[] } } }).properties.args
     expect(args.properties.method.enum).toBeUndefined()
     expect(args.properties.method.description).toContain('Runtime.evaluate')
-    expect(args.properties.method.description).toContain('enableDebugger')
+    expect(args.properties.method.description).toContain('Browser developer mode')
+    expect(args.properties.method.description.toLowerCase()).toContain('do not call enabledebugger first')
     expect(args.properties.method.description).toContain('Page.captureScreenshot')
-    expect(cdp.description).toContain('enableDebugger')
+    expect(cdp.description).toContain('Browser developer mode')
+    expect(cdp.description.toLowerCase()).not.toContain('after cdp.enabledebugger')
     expect(args.required ?? []).not.toContain('method')
     const exec = { signal: new AbortController().signal }
     await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'events', args: { afterSequence: 0 } }, exec)
@@ -210,7 +212,7 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition
     const exec = { signal: new AbortController().signal }
-    // Non-allowlisted observation methods pass the bridge so the extension can enforce the session gate.
+    // Non-allowlisted methods pass the bridge so the extension can enforce developer-mode gating.
     await (cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Runtime.evaluate', params: { expression: '1' } } }, exec)
     expect(requestTool).toHaveBeenCalledWith('cdp', { method: 'call', args: { method: 'Runtime.evaluate', params: { expression: '1' } } }, exec.signal, 1000)
     await expect((cdp.execute as (args: unknown, exec: unknown) => Promise<unknown>)({ method: 'call', args: { method: 'Browser.close' } }, exec)).rejects.toThrow('permanently denied')

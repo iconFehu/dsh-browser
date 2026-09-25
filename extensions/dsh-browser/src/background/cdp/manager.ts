@@ -1,11 +1,11 @@
 /**
  * CDP lifecycle for the controlled tab (Chrome only).
  *
- * Default observation path never drives input: clicks, typing, scrolling and
- * navigation stay on the high-level content-script pipeline. After the user
- * approves `cdp.enableDebugger` for the current side-panel session, tool
- * dispatch may send Runtime.evaluate / Input.* through this manager on the
- * controlled http(s) tab (opt-in session-unrestricted debugger).
+ * Observation tools never drive input through the content-script pipeline path;
+ * clicks, typing, scrolling and navigation stay on high-level tools. When
+ * Browser developer mode (`cdpEnabled`) is ON, tool dispatch may also send
+ * Runtime.evaluate / Input.* through this manager on the controlled http(s)
+ * tab (unrestricted debugger; hard denylist still applies).
  * chrome.debugger is attached only while a side panel conversation is open AND
  * the developer-mode switch is on, and is detached when the panel closes, the
  * controlled tab changes, or the tab navigates away from http(s). Attaching
@@ -153,7 +153,11 @@ export class CdpManager {
     if (available) this.debuggerLike.addEventListener(this.onEvent)
   }
 
-  /** Developer mode (user opt-in) gates all attachment. */
+  /** Developer mode (user opt-in) gates all attachment and unrestricted debugger. */
+  get developerModeEnabled(): boolean {
+    return this.developerMode
+  }
+
   setDeveloperMode(enabled: boolean): void {
     this.developerMode = enabled
     if (!enabled) void this.detach()

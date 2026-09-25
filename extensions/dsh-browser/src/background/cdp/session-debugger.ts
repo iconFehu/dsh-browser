@@ -1,16 +1,20 @@
 /**
- * Session-scoped unrestricted CDP debugger gate.
+ * CDP debugger policy helpers.
  *
- * Default off. After one explicit approval via `cdp.enableDebugger` for the
- * current side-panel session, `cdp.call` may invoke methods beyond the
- * observation allowlist (Runtime.evaluate, Input.*, etc.) on the controlled
- * http(s) tab. Cleared when the side panel closes, developer mode turns off,
- * or `cdp.disableDebugger` runs.
+ * When Browser developer mode (`cdpEnabled`) is ON, `cdp.call` may invoke
+ * methods beyond the observation allowlist (Runtime.evaluate, Input.*, etc.)
+ * on the controlled http(s) tab under the usual CDP prerequisites (Chrome,
+ * side panel open, attach). When developer mode is OFF, attach fails and
+ * evaluate / Input are unavailable. A minimal denylist still blocks
+ * catastrophic Browser/Target process methods.
+ *
+ * `cdp.enableDebugger` / `cdp.disableDebugger` are legacy no-ops: models should
+ * not call them — turn developer mode on/off in extension settings instead.
  *
  * @module
  */
 
-/** Catastrophic CDP methods that stay blocked even with the session debugger on. */
+/** Catastrophic CDP methods that stay blocked even with developer mode on. */
 export const DENIED_CDP_METHODS: ReadonlySet<string> = new Set([
   'Browser.close',
   'Browser.crash',
@@ -18,30 +22,15 @@ export const DENIED_CDP_METHODS: ReadonlySet<string> = new Set([
 ])
 
 /**
- * Hint appended when observation-only mode rejects evaluate / Input / other
- * non-allowlisted methods. Teach the model how to enable the session gate;
+ * Hint when CDP debugger methods are unavailable. Teach the model to enable
+ * Browser developer mode in settings — not to call enableDebugger.
  * Cloudflare-style human challenges should still prefer botDetection.
  */
-export const CDP_SESSION_DEBUGGER_HINT =
-  'This CDP method is outside the observation allowlist. Call cdp.enableDebugger once (requires user approval for this side-panel session; Browser developer mode must be on), then retry cdp.call. Prefer botDetection for human CAPTCHA / challenge pages rather than treating debugger Input/evaluate as the default bypass.'
+export const CDP_DEVELOPER_MODE_HINT =
+  'CDP debugger methods (Runtime.evaluate, Input.*, etc.) require Browser developer mode ON in the extension settings, an open side panel, and a controlled http(s) tab. Prefer botDetection for human CAPTCHA / challenge pages rather than treating debugger Input/evaluate as the default bypass.'
 
-const enabledSessions = new Set<string>()
-
-export function isSessionCdpDebuggerEnabled(sessionId: string | undefined): boolean {
-  return typeof sessionId === 'string' && sessionId.length > 0 && enabledSessions.has(sessionId)
-}
-
-export function setSessionCdpDebugger(sessionId: string, enabled: boolean): void {
-  const sid = sessionId.trim()
-  if (sid === '') return
-  if (enabled) enabledSessions.add(sid)
-  else enabledSessions.delete(sid)
-}
-
-/** Drop every session gate (panel closed or developer mode off). */
-export function clearAllSessionCdpDebuggers(): void {
-  enabledSessions.clear()
-}
+/** @deprecated Alias — prefer CDP_DEVELOPER_MODE_HINT. */
+export const CDP_SESSION_DEBUGGER_HINT = CDP_DEVELOPER_MODE_HINT
 
 /** Well-formed CDP method names look like `Domain.methodName`. */
 export function isCdpMethodName(value: string): boolean {

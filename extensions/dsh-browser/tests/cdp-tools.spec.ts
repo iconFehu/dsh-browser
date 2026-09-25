@@ -1,15 +1,13 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   CDP_OBSERVATION_TOOLS,
-  CDP_SESSION_DEBUGGER_HINT,
-  clearAllSessionCdpDebuggers,
+  CDP_DEVELOPER_MODE_HINT,
   dispatchCdpDebuggerGate,
   dispatchCdpObservation,
   dispatchCdpRawCall,
   resolveCdpCall,
-  setSessionCdpDebugger,
   type CdpDebuggerDeps,
   type CdpObservationDeps,
 } from '../src/background/cdp/tools.ts'
@@ -236,14 +234,12 @@ describe('resolveCdpCall', () => {
 })
 
 
-describe('session-unrestricted CDP debugger', () => {
-  afterEach(() => {
-    clearAllSessionCdpDebuggers()
-  })
-
+describe('developer-mode CDP debugger', () => {
   function debuggerDeps(overrides: Partial<CdpDebuggerDeps> = {}): CdpDebuggerDeps {
+    const manager = fakeManager()
+    ;(manager as unknown as { developerModeEnabled: boolean }).developerModeEnabled = true
     return {
-      manager: fakeManager(),
+      manager,
       tab: { id: 1, url: 'https://example.com', windowId: 1 },
       sessionId: 'session-1',
       authorize: () => Promise.resolve('approved'),
@@ -252,27 +248,35 @@ describe('session-unrestricted CDP debugger', () => {
     }
   }
 
-  it('rejects Runtime.evaluate / Input when session debugger is off with enable hint', async () => {
+  function withDeveloperMode(manager: CdpManager, enabled: boolean): CdpManager {
+    ;(manager as unknown as { developerModeEnabled: boolean }).developerModeEnabled = enabled
+    return manager
+  }
+
+  it('rejects Runtime.evaluate / Input when developer mode is off', async () => {
+    const manager = withDeveloperMode(fakeManager(), false)
+    ;(manager as unknown as { attach: () => Promise<void> }).attach = async () => {
+      throw new CdpUnavailableError('disabled', 'Browser developer mode is off. Enable it in the extension settings first.')
+    }
     const answer = await dispatchCdpRawCall(
       call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1+1' } }),
-      debuggerDeps(),
+      debuggerDeps({ manager }),
     )
-    expect(answer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
-    expect(String((answer as { error: { message: string } }).error.message)).toContain('cdp.enableDebugger')
-    expect(String((answer as { error: { message: string } }).error.message)).toContain(CDP_SESSION_DEBUGGER_HINT.slice(0, 40))
+    expect(answer).toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
+    expect(String((answer as { error: { message: string } }).error.message)).toContain('developer mode is off')
+    expect(String((answer as { error: { message: string } }).error.message).toLowerCase()).not.toContain('enabledebugger')
 
     const input = await dispatchCdpRawCall(
       call('cdp.call', { method: 'Input.dispatchMouseEvent', params: { type: 'mousePressed', x: 1, y: 2, button: 'left', clickCount: 1 } }),
-      debuggerDeps(),
+      debuggerDeps({ manager }),
     )
     expect(input.ok).toBe(false)
-    expect(String((input as { error: { message: string } }).error.message)).toContain('cdp.enableDebugger')
+    expect(String((input as { error: { message: string } }).error.message)).toContain('developer mode is off')
   })
 
-  it('enableDebugger requires approval once then allows evaluate and Input passthrough', async () => {
-    const prompts: string[] = []
+  it('with developer mode on, evaluate and Input passthrough without enableDebugger approval', async () => {
     const sendLog: Array<{ method: string; params?: Record<string, unknown> }> = []
-    const manager = fakeManager()
+    const manager = withDeveloperMode(fakeManager(), true)
     ;(manager as unknown as { send: (method: string, params?: Record<string, unknown>) => Promise<unknown> }).send = async (method, params) => {
       sendLog.push({ method, params })
       if (method === 'Runtime.evaluate') return { result: { type: 'number', value: 2 } }
@@ -281,24 +285,10 @@ describe('session-unrestricted CDP debugger', () => {
 
     const d = debuggerDeps({
       manager,
-      authorize: (prompt) => {
-        prompts.push(prompt.action)
-        return Promise.resolve('approved')
-      },
-    })
-
-    const enabled = await dispatchCdpDebuggerGate(call('cdp.enableDebugger'), d)
-    expect(enabled.ok).toBe(true)
-    expect(prompts).toEqual(['cdp.enableDebugger'])
-
-    // Second enable is a no-op without another approval.
-    const again = await dispatchCdpDebuggerGate(call('cdp.enableDebugger'), {
-      ...d,
       authorize: () => {
-        throw new Error('should not re-prompt')
+        throw new Error('should not prompt for enableDebugger')
       },
     })
-    expect(again.ok).toBe(true)
 
     const evaluate = await dispatchCdpRawCall(
       call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1+1', returnByValue: true } }),
@@ -317,36 +307,74 @@ describe('session-unrestricted CDP debugger', () => {
     expect(sendLog.map((entry) => entry.method)).toEqual(['Runtime.evaluate', 'Input.dispatchMouseEvent'])
   })
 
+  it('enableDebugger is a no-op success when developer mode is on (no approval)', async () => {
+    const prompts: string[] = []
+    const d = debuggerDeps({
+      authorize: (prompt) => {
+        prompts.push(prompt.action)
+        return Promise.resolve('approved')
+      },
+    })
+    const enabled = await dispatchCdpDebuggerGate(call('cdp.enableDebugger'), d)
+    expect(enabled.ok).toBe(true)
+    expect((enabled.result as { text: string }).text.toLowerCase()).toContain('developer mode')
+    expect(prompts).toEqual([])
+  })
+
+  it('enableDebugger tells the model to flip settings when developer mode is off', async () => {
+    const manager = withDeveloperMode(fakeManager(), false)
+    const answer = await dispatchCdpDebuggerGate(call('cdp.enableDebugger'), debuggerDeps({ manager }))
+    expect(answer).toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
+    expect(String((answer as { error: { message: string } }).error.message)).toContain('extension settings')
+  })
+
   it('still denies Browser.close when debugger is on', async () => {
-    setSessionCdpDebugger('session-1', true)
     const answer = await dispatchCdpRawCall(call('cdp.call', { method: 'Browser.close' }), debuggerDeps())
     expect(answer).toMatchObject({ ok: false, error: { code: 'action-failed' } })
     expect(String((answer as { error: { message: string } }).error.message)).toContain('permanently denied')
   })
 
-  it('disableDebugger and clear restore observation-only rejection', async () => {
-    setSessionCdpDebugger('session-1', true)
+  it('disableDebugger is a no-op pointing at settings', async () => {
     const disabled = await dispatchCdpDebuggerGate(call('cdp.disableDebugger'), debuggerDeps())
     expect(disabled.ok).toBe(true)
-    const answer = await dispatchCdpRawCall(call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1' } }), debuggerDeps())
-    expect(answer.ok).toBe(false)
+    expect((disabled.result as { text: string }).text).toContain('no-op')
+    expect((disabled.result as { text: string }).text.toLowerCase()).toContain('settings')
+    // Raw evaluate still works while developer mode remains on.
+    const sendLog: string[] = []
+    const manager = withDeveloperMode(fakeManager(), true)
+    ;(manager as unknown as { send: (method: string) => Promise<unknown> }).send = async (method) => {
+      sendLog.push(method)
+      return { result: { value: 1 } }
+    }
+    const answer = await dispatchCdpRawCall(
+      call('cdp.call', { method: 'Runtime.evaluate', params: { expression: '1' } }),
+      debuggerDeps({ manager }),
+    )
+    expect(answer.ok).toBe(true)
+    expect(sendLog).toEqual(['Runtime.evaluate'])
   })
 
-  it('debuggerStatus reports the session flag', async () => {
-    const off = await dispatchCdpDebuggerGate(call('cdp.debuggerStatus'), debuggerDeps())
-    expect(off.ok).toBe(true)
-    expect((off.result as { text: string }).text).toContain('"sessionDebugger":false')
-    setSessionCdpDebugger('session-1', true)
+  it('debuggerStatus reports developerMode, not a session flag', async () => {
     const on = await dispatchCdpDebuggerGate(call('cdp.debuggerStatus'), debuggerDeps())
-    expect((on.result as { text: string }).text).toContain('"sessionDebugger":true')
+    expect(on.ok).toBe(true)
+    expect((on.result as { text: string }).text).toContain('"developerMode":true')
+    expect((on.result as { text: string }).text).toContain('"debuggerAvailable":true')
+
+    const manager = withDeveloperMode(fakeManager(), false)
+    const off = await dispatchCdpDebuggerGate(call('cdp.debuggerStatus'), debuggerDeps({ manager }))
+    expect((off.result as { text: string }).text).toContain('"developerMode":false')
   })
 
-  it('refuses enableDebugger on chrome:// tabs', async () => {
+  it('refuses enableDebugger attach on chrome:// tabs when developer mode is on', async () => {
     const answer = await dispatchCdpDebuggerGate(
       call('cdp.enableDebugger'),
       debuggerDeps({ tab: { id: 1, url: 'chrome://extensions', windowId: 1 } }),
     )
     expect(answer).toMatchObject({ ok: false, error: { code: 'feature-unavailable' } })
   })
-})
 
+  it('exports a developer-mode hint without enableDebugger instructions', () => {
+    expect(CDP_DEVELOPER_MODE_HINT).toContain('Browser developer mode')
+    expect(CDP_DEVELOPER_MODE_HINT.toLowerCase()).not.toContain('call cdp.enabledebugger')
+  })
+})

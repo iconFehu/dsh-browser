@@ -82,9 +82,8 @@ import { API_TOOL_NAMES, dispatchApiTool } from './api-tools.ts'
 import { cdpObservation } from './cdp/instance.ts'
 import {
   CDP_DEBUGGER_GATE_TOOLS,
+  CDP_DEVELOPER_MODE_HINT,
   CDP_OBSERVATION_TOOLS,
-  CDP_SESSION_DEBUGGER_HINT,
-  clearAllSessionCdpDebuggers,
   dispatchCdpDebuggerGate,
   dispatchCdpObservation,
   dispatchCdpRawCall,
@@ -290,7 +289,6 @@ async function persistSettings(next: Partial<Settings>): Promise<void> {
   const revokesUnrestrictedAccess = settings.unrestrictedBrowserAccess && !updated.unrestrictedBrowserAccess
   settings = updated
   cdpObservation.setDeveloperMode(updated.cdpEnabled)
-  if (!updated.cdpEnabled) clearAllSessionCdpDebuggers()
   if (!updated.unrestrictedBrowserAccess) unrestrictedAccessActive = false
   syncSelectionWatch()
   let accessTransition: Promise<void> | undefined
@@ -1184,7 +1182,7 @@ async function pushBudgetToControlledTab(negotiated: BridgeCaps): Promise<void> 
   }
 }
 
-/** Run a `cdp.*` call: observation allowlist, session debugger gate, or raw passthrough. */
+/** Run a `cdp.*` call: observation allowlist, legacy debugger no-ops, or raw passthrough (developer mode). */
 function dispatchCdpCall(
   call: ToolCall,
   target: Pick<chrome.tabs.Tab, 'id' | 'url' | 'windowId'>,
@@ -1213,7 +1211,7 @@ function dispatchCdpCall(
       signal,
     })
   }
-  // Non-allowlisted cdp.call: require session debugger; hint how to enable when off.
+  // Non-allowlisted cdp.call: unrestricted when developer mode is on (attach enforces the gate).
   if (wireName === 'cdp.call') {
     return dispatchCdpRawCall(call, {
       manager: cdpObservation,
@@ -1227,7 +1225,7 @@ function dispatchCdpCall(
     ok: false,
     error: {
       code: 'action-failed',
-      message: `Unsupported CDP request: ${call.name}${typeof call.args.method === 'string' ? ` ${call.args.method}` : ''}. ${CDP_SESSION_DEBUGGER_HINT}`,
+      message: `Unsupported CDP request: ${call.name}${typeof call.args.method === 'string' ? ` ${call.args.method}` : ''}. ${CDP_DEVELOPER_MODE_HINT}`,
     },
   })
 }
@@ -1887,7 +1885,6 @@ chrome.runtime.onConnect.addListener((port) => {
       bridgeStartRevision += 1
       bridge?.suspendReconnect()
       cdpObservation.setPanelActive(false)
-      clearAllSessionCdpDebuggers()
       approvals.notifyPending()
       if (bridge?.state !== 'connected') disarmBridgeKeepalive()
     }

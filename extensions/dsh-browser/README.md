@@ -20,7 +20,7 @@ Model calls arrive as `capability.call` frames and run inside the extension as `
 | Page assets | `pageAssets.list` / `bundle` | Inventory loaded assets; an approved bundle saves files to `Downloads/dsh-browser-assets/…` (names only go back to the model) |
 | Window and viewport | `visibility.get` / `set`, `viewport.get` / `set` / `reset` | Show or minimize the window; viewport overrides need Browser developer mode |
 | Blocked pages | `botDetection.report` | Tells you about a CAPTCHA or access denial so you can resolve it |
-| Developer observation (Chrome) | `cdp.call` / `cdp.events` | Off by default; enable **Browser developer mode** in Settings. Attaches the debugger to the controlled tab for observation only |
+| Developer CDP (Chrome) | `cdp.call` / `cdp.events` | Off by default; enable **Browser developer mode** in Settings. Attaches the debugger to the controlled tab for observation and unrestricted debugger methods (`Runtime.evaluate`, `Input.*`; hard denylist still applies). `enableDebugger` is a no-op — the settings switch is the gate. |
 | Chat with images | `session.prompt` / `session.attachment` | Host-gated image selection, image-only sends, and durable history previews |
 | Quote what you highlight | side panel composer | The text you select in the page becomes a quote in the composer and rides along with your next message |
 

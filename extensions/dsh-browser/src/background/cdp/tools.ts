@@ -1,11 +1,12 @@
 /**
  * CDP tool executors backed by the CDP manager (Chrome, developer-mode switch).
  *
- * Default path is observation-only: allowlisted methods map to read/capture
- * tools and never dispatch input. After one explicit session approval via
- * `cdp.enableDebugger`, `cdp.call` may passthrough most Page/Runtime/Input/DOM/
- * Network methods (debugger-level) on the controlled http(s) tab. A minimal
- * denylist still blocks catastrophic Browser/Target process methods.
+ * Observation path: allowlisted methods map to read/capture tools and never
+ * dispatch input. When Browser developer mode is ON, `cdp.call` may also
+ * passthrough most Page/Runtime/Input/DOM/Network methods (debugger-level) on
+ * the controlled http(s) tab. A minimal denylist still blocks catastrophic
+ * Browser/Target process methods. `cdp.enableDebugger` / `disableDebugger` are
+ * legacy no-ops — gate via the settings switch, not a second approval.
  *
  * Every tool: lazily attaches CDP to the controlled tab, obtains authorization
  * when required, produces bounded text, and wraps page/browser-authored content
@@ -24,20 +25,17 @@ import { renderMetrics } from './metrics.ts'
 import { CdpUnavailableError, type CdpManager } from './manager.ts'
 import type { ApprovalAuthorization, ApprovalPrompt } from '../../security/approval.ts'
 import {
+  CDP_DEVELOPER_MODE_HINT,
   CDP_SESSION_DEBUGGER_HINT,
   DENIED_CDP_METHODS,
   isCdpMethodName,
-  isSessionCdpDebuggerEnabled,
-  setSessionCdpDebugger,
 } from './session-debugger.ts'
-import { getUiLocale } from '../../i18n.ts'
 
 export {
+  CDP_DEVELOPER_MODE_HINT,
   CDP_SESSION_DEBUGGER_HINT,
   DENIED_CDP_METHODS,
-  clearAllSessionCdpDebuggers,
-  isSessionCdpDebuggerEnabled,
-  setSessionCdpDebugger,
+  isCdpMethodName,
 } from './session-debugger.ts'
 
 /** Session gate / status tools routed alongside observation tools. */
@@ -390,45 +388,49 @@ export interface CdpDebuggerDeps {
 }
 
 /**
- * Enable / disable / status for the session-unrestricted CDP debugger gate.
- * Requires Chrome, Browser developer mode, an open side panel, and a controlled
- * http(s) tab (same attach prerequisites as observation tools).
+ * Legacy enable / disable / status for the CDP debugger.
+ * Developer mode ON already grants unrestricted debugger powers; these tools
+ * are no-ops so models need not call enableDebugger. Disable by turning off
+ * Browser developer mode in extension settings.
  */
 export async function dispatchCdpDebuggerGate(call: ToolCall, deps: CdpDebuggerDeps): Promise<ToolAnswer> {
   if (cancelledOrExpired(call, deps.signal)) {
     return unavailableError('bridge-closed', 'The browser tool call was cancelled.')
   }
   const wireName = normalizeCdpWireName(call.name)
+  const developerMode = deps.manager.developerModeEnabled
   if (wireName === 'cdp.debuggerStatus') {
     return {
       ok: true,
       result: {
         text: JSON.stringify({
-          sessionDebugger: isSessionCdpDebuggerEnabled(deps.sessionId),
+          developerMode,
+          debuggerAvailable: developerMode,
           sessionId: deps.sessionId ?? null,
-          developerModeRequired: true,
-          note: 'When sessionDebugger is true, cdp.call may use Runtime.evaluate and Input.* on the controlled http(s) tab (denylist still applies). Prefer botDetection for human challenges.',
+          note: 'When Browser developer mode is ON (and CDP prerequisites hold), cdp.call may use Runtime.evaluate and Input.* on the controlled http(s) tab (denylist still applies). Prefer botDetection for human challenges. enableDebugger / disableDebugger are no-ops — toggle developer mode in settings.',
         }),
       },
     }
   }
   if (wireName === 'cdp.disableDebugger') {
-    if (typeof deps.sessionId === 'string' && deps.sessionId.length > 0) {
-      setSessionCdpDebugger(deps.sessionId, false)
+    return {
+      ok: true,
+      result: {
+        text: 'cdp.disableDebugger is a no-op. Unrestricted CDP debugger follows Browser developer mode: turn it off in the extension settings to disable evaluate / Input via cdp.call.',
+      },
     }
-    return { ok: true, result: { text: 'Session-unrestricted CDP debugger disabled for this side-panel session. cdp.call is observation-allowlist only again.' } }
   }
   if (wireName !== 'cdp.enableDebugger') {
     return unavailableError('action-failed', `Unknown CDP debugger gate tool "${call.name}".`)
   }
-  if (typeof deps.sessionId !== 'string' || deps.sessionId.length === 0) {
-    return unavailableError('action-failed', 'cdp.enableDebugger requires an active side-panel session.')
-  }
-  if (isSessionCdpDebuggerEnabled(deps.sessionId)) {
-    return { ok: true, result: { text: 'Session-unrestricted CDP debugger is already enabled for this side-panel session. cdp.call may use Runtime.evaluate, Input.dispatchMouseEvent / Input.dispatchKeyEvent / Input.insertText, and related Page/Runtime/Input/DOM/Network methods (Browser.close and Target.closeTarget remain denied).' } }
-  }
   if (!deps.manager.available) {
     return unavailableError('feature-unavailable', 'Browser developer mode is available in Google Chrome only; this tool is not supported in the current browser.')
+  }
+  if (!developerMode) {
+    return unavailableError(
+      'feature-unavailable',
+      'Browser developer mode is off. Enable it in the extension settings to use unrestricted CDP debugger (Runtime.evaluate, Input.*, etc.). cdp.enableDebugger does not open a second approval — the settings switch is the gate.',
+    )
   }
   if (deps.tab.id === undefined || !httpUrl(deps.tab.url)) {
     return unavailableError('feature-unavailable', 'The controlled tab is not a normal web page, so the CDP debugger cannot attach to it.')
@@ -441,34 +443,16 @@ export async function dispatchCdpDebuggerGate(call: ToolCall, deps: CdpDebuggerD
     }
     throw error
   }
-  const locale = getUiLocale()
-  const prompt: ApprovalPrompt = {
-    kind: 'action',
-    action: 'cdp.enableDebugger',
-    summary: locale === 'zh'
-      ? '为本侧边栏会话开启无限制 CDP 调试器（允许 Runtime.evaluate 与 Input 点击/输入等）。默认关闭；仅在你明确同意后生效。Cloudflare 等人机验证仍应优先用 botDetection。'
-      : 'Enable session-unrestricted CDP debugger for this side-panel session (allows Runtime.evaluate and Input click/type). Off by default; only after your explicit approval. Prefer botDetection for human CAPTCHA challenges.',
-    origins: (() => {
-      try { return [new URL(deps.tab.url!).origin] } catch { return [] }
-    })(),
-    canTrust: false,
-  }
-  const authorization = await deps.authorize(prompt)
-  if (authorization !== 'approved') return approvalFailure(prompt, authorization)
-  if (cancelledOrExpired(call, deps.signal)) {
-    return unavailableError('bridge-closed', 'The browser tool call was cancelled during approval.')
-  }
-  setSessionCdpDebugger(deps.sessionId, true)
   return {
     ok: true,
     result: {
-      text: 'Session-unrestricted CDP debugger enabled for this side-panel session after user approval. cdp.call may now invoke Runtime.evaluate, Input.dispatchMouseEvent / Input.dispatchKeyEvent / Input.insertText, and most Page/Runtime/Input/DOM/Network methods on the controlled http(s) tab. Browser.close, Browser.crash, and Target.closeTarget remain denied. Values from evaluate/network may contain secrets — treat them as untrusted. Prefer botDetection for human CAPTCHA challenges. Call cdp.disableDebugger (or close the side panel) to turn this off.',
+      text: 'CDP debugger is already available via Browser developer mode (no separate enableDebugger approval). cdp.call may use Runtime.evaluate, Input.dispatchMouseEvent / Input.dispatchKeyEvent / Input.insertText, and related Page/Runtime/Input/DOM/Network methods on the controlled http(s) tab. Browser.close, Browser.crash, and Target.closeTarget remain denied. Prefer botDetection for human CAPTCHA challenges. Turn off developer mode in settings to disable.',
     },
   }
 }
 
 /**
- * Raw CDP passthrough used only when the session debugger gate is on.
+ * Raw CDP passthrough when Browser developer mode is ON (attach succeeds).
  * Observation allowlisted methods should keep using dispatchCdpObservation.
  */
 export async function dispatchCdpRawCall(call: ToolCall, deps: CdpDebuggerDeps): Promise<ToolAnswer> {
@@ -481,9 +465,6 @@ export async function dispatchCdpRawCall(call: ToolCall, deps: CdpDebuggerDeps):
   }
   if (DENIED_CDP_METHODS.has(method)) {
     return unavailableError('action-failed', `CDP method ${method} is permanently denied (process-level risk).`)
-  }
-  if (!isSessionCdpDebuggerEnabled(deps.sessionId)) {
-    return unavailableError('action-failed', `Unsupported CDP request: cdp.call ${method}. ${CDP_SESSION_DEBUGGER_HINT}`)
   }
   if (!deps.manager.available) {
     return unavailableError('feature-unavailable', 'Browser developer mode is available in Google Chrome only; this tool is not supported in the current browser.')

@@ -16,7 +16,7 @@ export const BROWSER_TOOL_NAMES = ['botDetection', 'browserAuth', 'cdp', 'manage
 const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Report CAPTCHA, bot-detection, access-denied, and challenge-loop states so the user can resolve them; never try to solve or bypass them.',
   browserAuth: 'Hand a sign-in step to the user: describe the fields; the user types credentials directly on the page and they are never shared with you. Returns only a status such as submitted, declined, expired, or origin_changed.',
-  cdp: 'Use Chrome DevTools observation/capture methods, or after cdp.enableDebugger (one user approval per side-panel session) unrestricted debugger methods including Runtime.evaluate and Input.*. Default is observation-only. Prefer botDetection for human CAPTCHA challenges.',
+  cdp: 'Use Chrome DevTools Protocol on the controlled tab. With Browser developer mode ON: observation/capture plus unrestricted debugger methods including Runtime.evaluate and Input.*. With developer mode OFF: CDP unavailable. Prefer botDetection for human CAPTCHA challenges.',
   management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. tabs.update accepts Chrome tabs.update updateProperties (active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected→highlighted, url); not title/groupId/index. Preferred tab-group flow: tabs.list → tabs.group({tabIds}) → tabGroups.update({groupId,title,color}) → tabs.list to verify groupId; do not create empty groups. Only methods listed in the schema are available.',
   pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list inventories observed assets, and bundle saves selected ones into the user\'s Downloads folder (you receive file names, never contents).',
   viewport: 'Read, set, or reset a viewport override for responsive testing (Chrome, requires browser developer mode). Reset overrides before finishing unless the user asked to keep them.',
@@ -25,7 +25,7 @@ const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
 const METHOD_GUIDE: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   botDetection: 'Methods: report.',
   browserAuth: 'Methods: request.',
-  cdp: 'Methods: call, events, enableDebugger, disableDebugger, debuggerStatus. Observation-only call methods (no session debugger): Accessibility.getFullAXTree, DOM.getDocument, DOM.getOuterHTML, Network.enable/disable/getResponseBody, Performance.enable/disable/getMetrics, Page.captureScreenshot, Page.printToPDF. For Runtime.evaluate or Input.dispatchMouseEvent/dispatchKeyEvent/insertText (and related Input.*), first call enableDebugger once this session (user approval; requires Browser developer mode + controlled http(s) tab), then cdp.call. disableDebugger or closing the side panel turns it off. Prefer botDetection for human CAPTCHA challenges — do not treat debugger Input/evaluate as the default bypass. For events, omit args.method; use args.afterSequence. Navigation belongs to management.tabs.',
+  cdp: 'Methods: call, events, enableDebugger, disableDebugger, debuggerStatus. Observation call methods: Accessibility.getFullAXTree, DOM.getDocument, DOM.getOuterHTML, Network.enable/disable/getResponseBody, Performance.enable/disable/getMetrics, Page.captureScreenshot, Page.printToPDF. With Browser developer mode ON (settings), cdp.call may also use Runtime.evaluate, Input.dispatchMouseEvent/dispatchKeyEvent/insertText, and related Page/Runtime/Input/DOM/Network methods on the controlled http(s) tab — do not call enableDebugger first (it is a no-op). Turn off developer mode in settings to disable debugger powers. Prefer botDetection for human CAPTCHA challenges — do not treat debugger Input/evaluate as the default bypass. For events, omit args.method; use args.afterSequence. Navigation belongs to management.tabs.',
   management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, group, ungroup, click, type, press, scroll, wait, back, forward; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events. Tab groups: tabs.group({tabIds, groupId?}) puts tabs in a (new or existing) group; tabs.ungroup({tabIds}) removes tabs from groups; tabGroups.ungroup({groupId}) dissolves a group; tabGroups.create requires tabIds (Chrome cannot create empty groups).', 
   pageAssets: 'Methods: snapshot, getText, list, bundle (bundle needs the inventoryId from list).',
   viewport: 'Methods: get, set, reset.',
@@ -40,19 +40,21 @@ const CAPABILITY_METHODS: Record<typeof BROWSER_TOOL_NAMES[number], readonly str
   viewport: ['get', 'set', 'reset'],
   visibility: ['get', 'set'],
 }
-/** Observation-only allowlist when session debugger is off (enforced in the extension). */
+/** Observation allowlist (extension also allows debugger methods when developer mode is on). */
 const ALLOWED_CDP_METHODS = new Set([
   'Accessibility.getFullAXTree', 'DOM.getDocument', 'DOM.getOuterHTML',
   'Network.enable', 'Network.disable', 'Network.getResponseBody', 'Performance.enable', 'Performance.disable', 'Performance.getMetrics',
   'Page.captureScreenshot', 'Page.printToPDF',
 ])
-/** Permanently denied even with session-unrestricted debugger. */
+/** Permanently denied even with Browser developer mode / unrestricted debugger. */
 const DENIED_CDP_METHODS = new Set([
   'Browser.close', 'Browser.crash', 'Target.closeTarget',
 ])
 const CDP_METHOD_PATTERN = /^[A-Za-z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9]*$/
-const CDP_SESSION_DEBUGGER_HINT =
-  'This CDP method is outside the observation allowlist. Call cdp.enableDebugger once (requires user approval for this side-panel session; Browser developer mode must be on), then retry cdp.call. Prefer botDetection for human CAPTCHA / challenge pages rather than treating debugger Input/evaluate as the default bypass.'
+const CDP_DEVELOPER_MODE_HINT =
+  'CDP debugger methods (Runtime.evaluate, Input.*, etc.) require Browser developer mode ON in the extension settings, an open side panel, and a controlled http(s) tab. Prefer botDetection for human CAPTCHA / challenge pages rather than treating debugger Input/evaluate as the default bypass.'
+/** @deprecated Alias — prefer CDP_DEVELOPER_MODE_HINT. */
+const CDP_SESSION_DEBUGGER_HINT = CDP_DEVELOPER_MODE_HINT
 
 const MANAGEMENT_METHODS: Record<string, readonly string[]> = {
   windows: ['list'],
@@ -64,8 +66,9 @@ const MANAGEMENT_METHODS: Record<string, readonly string[]> = {
   events: ['events'],
 }
 export const CDP_OBSERVATION_METHODS = Object.freeze([...ALLOWED_CDP_METHODS])
-/** @deprecated Alias kept for callers that listed observation methods. */
+/** @deprecated Alias kept for callers that listed observation / enable hints. */
 export const CDP_SESSION_DEBUGGER_ENABLE_HINT = CDP_SESSION_DEBUGGER_HINT
+export { CDP_DEVELOPER_MODE_HINT }
 export const MANAGEMENT_NAMESPACES = Object.freeze(Object.keys(MANAGEMENT_METHODS))
 export const MANAGEMENT_METHOD_NAMES = Object.freeze([...new Set(Object.values(MANAGEMENT_METHODS).flat())])
 const MANAGEMENT_ARG_SCHEMA = {
@@ -111,7 +114,7 @@ const MANAGEMENT_ARG_SCHEMA = {
 const ARG_SCHEMAS = {
   botDetection: { type: 'object', additionalProperties: false, properties: { reason: { type: 'string', enum: ['captcha_failed', 'access_denied', 'challenge_loop', 'unexpected_bot_error'], required: true } } },
   browserAuth: { type: 'object', additionalProperties: false, description: 'Sign-in handoff: the user fills and submits these fields on the page themselves.', properties: { origin: { type: 'string', required: true, description: 'http(s) origin of the controlled page that shows the sign-in form.' }, fields: { type: 'array', required: true, description: 'The 1-6 fields the user needs to fill, shown to the user as a checklist.', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, label: { type: 'string', required: true, description: 'Field label as shown on the page.' }, type: { type: 'string', enum: ['text', 'email', 'password', 'otp'], required: true }, required: { type: 'boolean', required: true }, selector: { type: 'string', description: 'Optional CSS selector of the field on the page.' } } } } } },
-  cdp: { type: 'object', additionalProperties: false, properties: { method: { type: 'string', description: 'Required for cdp.call: a CDP Domain.method name. Observation allowlist (no session debugger): Accessibility.getFullAXTree, DOM.getDocument, DOM.getOuterHTML, Network.enable, Network.disable, Network.getResponseBody, Performance.enable, Performance.disable, Performance.getMetrics, Page.captureScreenshot, Page.printToPDF. With session debugger (after enableDebugger): Runtime.evaluate, Input.dispatchMouseEvent, Input.dispatchKeyEvent, Input.insertText, and other Page/Runtime/Input/DOM/Network methods are allowed; Browser.close, Browser.crash, Target.closeTarget stay denied. Omit for events / enableDebugger / disableDebugger / debuggerStatus.' }, params: { type: 'object', additionalProperties: true, description: 'Optional parameters for cdp.call.' }, afterSequence: { type: 'number', description: 'Sequence cursor for cdp.events.' } } },
+  cdp: { type: 'object', additionalProperties: false, properties: { method: { type: 'string', description: 'Required for cdp.call: a CDP Domain.method name. Observation methods: Accessibility.getFullAXTree, DOM.getDocument, DOM.getOuterHTML, Network.enable, Network.disable, Network.getResponseBody, Performance.enable, Performance.disable, Performance.getMetrics, Page.captureScreenshot, Page.printToPDF. With Browser developer mode ON: Runtime.evaluate, Input.dispatchMouseEvent, Input.dispatchKeyEvent, Input.insertText, and other Page/Runtime/Input/DOM/Network methods are allowed (do not call enableDebugger first); Browser.close, Browser.crash, Target.closeTarget stay denied. Omit for events / enableDebugger / disableDebugger / debuggerStatus.' }, params: { type: 'object', additionalProperties: true, description: 'Optional parameters for cdp.call.' }, afterSequence: { type: 'number', description: 'Sequence cursor for cdp.events.' } } },
   pageAssets: { type: 'object', additionalProperties: false, properties: { delta: { type: 'boolean', description: 'snapshot: return only changes since the previous snapshot.' }, region: { type: 'string', description: 'snapshot: CSS selector or "main" to read only that region.' }, selector: { type: 'string', description: 'getText: CSS selector; omit to read the whole page.' }, frame: { type: 'number', description: 'Iframe number from snapshot; omit for the top page.' }, inventoryId: { type: 'string', description: 'bundle: inventoryId returned by list.' }, assetIds: { type: 'array', description: 'bundle: asset ids from list; omit to take every asset matching kinds.', items: { type: 'string' } }, kinds: { type: 'array', items: { type: 'string', enum: ['font', 'image', 'stylesheet', 'video', 'other'] } } } },
   viewport: { type: 'object', additionalProperties: false, properties: { width: { type: 'number', description: 'set: CSS pixel width, 320-10000.' }, height: { type: 'number', description: 'set: CSS pixel height, 240-10000.' } } },
   visibility: { type: 'object', additionalProperties: false, properties: { visible: { type: 'boolean', description: 'set: true shows the browser window, false minimizes it.' } } },
@@ -222,8 +225,8 @@ function validateCapabilityArgs(capability: string, method: string, args: Record
     if (DENIED_CDP_METHODS.has(args.method)) {
       throw new Error(`cdp.call method ${args.method} is permanently denied`)
     }
-    // Non-allowlisted methods are accepted here so the extension can enforce the
-    // session debugger gate and return a how-to-enable hint when it is off.
+    // Non-allowlisted methods are accepted here so the extension can enforce
+    // developer-mode gating (attach) and return a clear error when it is off.
   }
   if (capability === 'cdp' && method === 'events' && args.afterSequence !== undefined && (!Number.isSafeInteger(args.afterSequence) || Number(args.afterSequence) < 0)) throw new Error('cdp.events afterSequence must be a non-negative integer')
   if (capability === 'pageAssets' && (method === 'snapshot' || method === 'getText')) {
