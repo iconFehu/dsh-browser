@@ -55,7 +55,7 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 | `management` | `tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | 按最新快照的编号操作元素（兼容 React/Vue 受控组件，`replace` 先清空），发送按键、滚动、等待页面稳定，以及在历史中前进后退 |
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出标签页的稳定 ID 与活动/受控状态、打开 URL（`active:false` 时保持当前页在前台）、在受控页导航、跟随已列出的标签页而不激活它，或关闭一个已列出的标签页 |
 | `management`（Chrome） | `bookmarks.search` / `create` / `update` / `delete`、`history.search`、`downloads.list`、`tabGroups.list` / `create` / `ungroup` | 浏览器 API 操作；会改动状态的操作需要确认 |
-| `cdp`（Chrome，需手动开启） | `call`（仅限允许名单内的方法）、`events` | 只做观察，需在设置里开启「浏览器开发者模式」：深层 DOM 读取、网络与性能指标、诊断，以及以本地保存对话框导出截图/PDF |
+| `cdp`（Chrome，需手动开启） | `call`（仅限允许名单内的方法）、`events` | 只做观察，需在设置里开启「浏览器开发者模式」：深层 DOM 读取、网络与性能指标、诊断，以及将截图/PDF 静默自动保存到 Downloads/dsh-browser/（不会发给模型；查看/操作页面请优先用 pageAssets.snapshot） |
 | `management` | `windows.list`、`tabs.update`、`tabGroups.update`、`downloads.cancel`、`events` | 列出窗口、固定/静音/激活标签页、编辑标签组、取消下载（后三项需要确认），以及长轮询浏览器变更日志；日志只含 id，不含标题和 URL |
 | `browserAuth` | `request` | 登录移交：侧栏请你直接在页面上登录，完成后点「我已登录」。你的凭据不会发给模型，模型只拿到状态（`submitted`、`declined`、`expired`、`origin_changed` 等）。即使开启了完全控制浏览器，也不会替你确认 |
 | `pageAssets` | `list` / `bundle` | 列出页面加载的图片、字体、样式表和媒体（遵循页面共享设置）；确认后 `bundle` 会把选中的文件存到「下载/dsh-browser-assets/…」，模型只拿到文件名和计数，拿不到文件内容 |

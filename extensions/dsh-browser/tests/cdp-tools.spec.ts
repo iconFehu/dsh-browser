@@ -122,18 +122,22 @@ describe('dispatchCdpObservation', () => {
     expect(text).toContain('shadow roots: 1')
   })
 
-  it('exports a screenshot through downloads with a save dialog', async () => {
+  it('exports a screenshot silently to Downloads/dsh-browser/', async () => {
     const capture = fakeManager()
     ;(capture as unknown as { send: (method: string) => Promise<{ data: string }> }).send = async () => ({ data: 'QUJD' })
     const d = deps({ manager: capture })
     const globalChrome = globalThis as { chrome?: unknown }
     const previous = globalChrome.chrome
-    let savedAs = false
+    let savedAs: boolean | undefined
+    let conflictAction: string | undefined
+    let filename: string | undefined
     ;(globalChrome as { chrome: unknown }).chrome = {
       runtime: { lastError: undefined },
       downloads: {
-        download: (options: { saveAs: boolean }, callback: (id: number) => void) => {
+        download: (options: { saveAs: boolean; conflictAction?: string; filename?: string }, callback: (id: number) => void) => {
           savedAs = options.saveAs
+          conflictAction = options.conflictAction
+          filename = options.filename
           callback(42)
         },
       },
@@ -141,8 +145,14 @@ describe('dispatchCdpObservation', () => {
     try {
       const answer = await dispatchCdpObservation(call('cdp.captureScreenshot'), d)
       expect(answer.ok).toBe(true)
-      expect((answer.result as { text: string }).text).toContain('download id 42')
-      expect(savedAs).toBe(true)
+      const text = (answer.result as { text: string }).text
+      expect(text).toContain('download id 42')
+      expect(text).toContain('saved to Downloads/')
+      expect(text).toContain('not sent to the model')
+      expect(text).not.toContain('save dialog')
+      expect(savedAs).toBe(false)
+      expect(conflictAction).toBe('uniquify')
+      expect(filename).toMatch(/^dsh-browser\/screenshot-\d+\.png$/)
     } finally {
       ;(globalChrome as { chrome: unknown }).chrome = previous
     }

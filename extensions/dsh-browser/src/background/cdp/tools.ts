@@ -300,10 +300,10 @@ export async function dispatchCdpObservation(call: ToolCall, deps: CdpObservatio
 }
 
 /**
- * Capture the controlled tab as a PNG (viewport) or PDF and start a save
- * dialog for it. The capture is exported as a local artifact for the user to
- * inspect or share; the model only receives a confirmation text, keeping the
- * tool channel text-only.
+ * Capture the controlled tab as a PNG (viewport) or PDF and silently save it
+ * under Downloads/dsh-browser/ (same silent pattern as pageAssets.bundle). The
+ * model only receives a confirmation text with the Downloads path; the image/PDF
+ * is not sent to the model, keeping the tool channel text-only.
  */
 async function exportCapture(deps: CdpObservationDeps, tool: 'cdp.captureScreenshot' | 'cdp.exportPdf'): Promise<ToolAnswer> {
   const downloads = (globalThis as { chrome?: { downloads?: unknown } }).chrome?.downloads
@@ -322,10 +322,10 @@ async function exportCapture(deps: CdpObservationDeps, tool: 'cdp.captureScreens
   const mime = isPdf ? 'application/pdf' : 'image/png'
   const extension = isPdf ? 'pdf' : 'png'
   const dataUrl = `data:${mime};base64,${raw.data}`
-  const filename = `dsh-browser-${isPdf ? 'page' : 'screenshot'}-${Date.now()}.${extension}`
+  const filename = `dsh-browser/${isPdf ? 'page' : 'screenshot'}-${Date.now()}.${extension}`
   const downloadId = await new Promise<number>((resolve, reject) => {
-    (downloads as { download(options: { url: string; filename: string; saveAs: boolean }, callback: (id: number) => void): void })
-      .download({ url: dataUrl, filename, saveAs: true }, (id) => {
+    (downloads as { download(options: { url: string; filename: string; saveAs: boolean; conflictAction: 'uniquify' }, callback: (id: number) => void): void })
+      .download({ url: dataUrl, filename, saveAs: false, conflictAction: 'uniquify' }, (id) => {
         const error = chrome.runtime.lastError
         if (error !== undefined) reject(new Error(String(error.message ?? error)))
         else resolve(id)
@@ -335,7 +335,7 @@ async function exportCapture(deps: CdpObservationDeps, tool: 'cdp.captureScreens
   return {
     ok: true,
     result: {
-      text: `${isPdf ? 'PDF export' : 'Screenshot'} of the controlled tab captured (${kib} KB) and a save dialog was opened for "${filename}" (download id ${downloadId}). The image/PDF is a local file for you to inspect or attach; it was not sent to the model.`,
+      text: `${isPdf ? 'PDF export' : 'Screenshot'} of the controlled tab captured (${kib} KB) and saved to Downloads/${filename} (download id ${downloadId}). The image/PDF is a local file for you to inspect or attach; it was not sent to the model.`,
     },
   }
 }
