@@ -8,6 +8,7 @@ import { getUiLocale, type UiLocale } from '../i18n.ts'
 const PAGE_READS = new Set([
   'pageAssets.snapshot',
   'pageAssets.getText',
+  'etherscan.recentTokenTransfers',
   'pageAssets.list',
   // CDP observation reads share the read-sharing policy.
   'cdp.diagnostics',

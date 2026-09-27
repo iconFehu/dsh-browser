@@ -11,11 +11,11 @@ describe('registerBrowserTools', () => {
     return { ctx, registered, requestTool, bridge: { requestTool } as unknown as BridgeServer }
   }
 
-  it('registers exactly the seven high-level capabilities and keeps WebMCP internal', () => {
+  it('registers exactly the eight high-level capabilities and keeps WebMCP internal', () => {
     const { ctx, registered } = harness()
     const disposers = registerBrowserTools(ctx, {} as BridgeServer, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     expect(registered.map(({ name }) => name)).toEqual([...BROWSER_TOOL_NAMES])
-    expect(disposers.size).toBe(7)
+    expect(disposers.size).toBe(8)
     expect(registered.map(({ name }) => name)).not.toContain('webmcp')
   })
 
@@ -145,6 +145,9 @@ describe('registerBrowserTools', () => {
     expect(Object.keys(cdp.properties)).toEqual(['method', 'args'])
     expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'inventoryId', 'assetIds', 'kinds'])
     expect(Object.keys(pageAssets.properties)).not.toContain('namespace')
+    const etherscan = registered.find(({ name }) => name === 'etherscan')!.definition.parameters as { properties: { method: { enum: string[] }; args: { properties: Record<string, unknown> } } }
+    expect(etherscan.properties.method.enum).toEqual(['recentTokenTransfers'])
+    expect(Object.keys(etherscan.properties.args.properties)).toEqual(['minutes', 'windowEnd', 'startPage', 'startRow', 'maxPages', 'maxRecords'])
   })
 
   it('documents CDP methods gated by Browser developer mode; events omit method', async () => {
@@ -225,6 +228,18 @@ describe('registerBrowserTools', () => {
     const auth = registered.find(({ name }) => name === 'browserAuth')!.definition.parameters as { properties: { args: { properties: { fields: { items: { properties: Record<string, unknown> } } } & Record<string, unknown> } } }
     expect(Object.keys(auth.properties.args.properties)).toEqual(['origin', 'fields'])
     expect(Object.keys(auth.properties.args.properties.fields.items.properties)).toEqual(['id', 'label', 'type', 'required', 'selector'])
+  })
+
+  it('validates etherscan.recentTokenTransfers arguments before dispatch', async () => {
+    const { ctx, registered, bridge, requestTool } = harness()
+    registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
+    const run = registered.find(({ name }) => name === 'etherscan')!.definition.execute as (args: unknown, exec: unknown) => Promise<unknown>
+    const exec = { signal: new AbortController().signal }
+    await expect(run({ method: 'recentTokenTransfers', args: { minutes: 0 } }, exec)).rejects.toThrow('minutes')
+    await expect(run({ method: 'recentTokenTransfers', args: { startRow: 100 } }, exec)).rejects.toThrow('startRow')
+    expect(requestTool).not.toHaveBeenCalled()
+    await run({ method: 'recentTokenTransfers', args: { minutes: 30 } }, exec)
+    expect(requestTool).toHaveBeenCalledWith('etherscan', { method: 'recentTokenTransfers', args: { minutes: 30 } }, exec.signal, 1000)
   })
 
   it('validates handoff, viewport, visibility, and bundle arguments before dispatch', async () => {

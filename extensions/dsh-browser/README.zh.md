@@ -13,6 +13,7 @@ dsh 的**浏览器操作端**：让模型直接读取并操作你在浏览器里
 | 能力 | 动作 | 说明 |
 |---|---|---|
 | 读取页面 | `pageAssets.snapshot` / `getText` | 标题/URL/正文/编号交互清单/表单字段（敏感值掩码）；`delta: true` 只返回变化 |
+| Etherscan 转账 | `etherscan.recentTokenTransfers` | 可选适配器：直接读取当前 ERC-20 代币页 Transfers 列表的分页 HTML，并在扩展内解析；按 `nextPage`、`nextRow`、`windowEndUnix` 续取 |
 | 操作页面 | `management.tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | 按快照编号操作元素（兼容 React/Vue）、按键、滚动、稳定检测和历史跳转 |
 | 标签页 | `management.tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出、打开（`active:false` 时保持当前页在前台）、导航、跟随但不激活、刷新或关闭已列出的标签页 |
 | 浏览器数据（Chrome） | `management.bookmarks.*` / `history.search` / `downloads.list` / `tabGroups.*` | 书签、历史、下载和标签组；会改动状态的调用需要确认 |

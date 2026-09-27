@@ -13,6 +13,7 @@
 import { pageText, truncate } from './extract.ts'
 import type { ElementIds } from './ids.ts'
 import type { SnapshotBudget } from './snapshot.ts'
+import { recentTokenTransfers } from './adapters/etherscan/index.ts'
 import { buildSnapshot, renderSnapshot } from './snapshot.ts'
 
 /** A settled action result. */
@@ -188,6 +189,8 @@ export async function runAction(action: string, args: Record<string, unknown>, c
       return reloadAction()
     case 'pageAssets.getText':
       return getTextAction(args)
+    case 'etherscan.recentTokenTransfers':
+      return recentTokenTransfers(args, ctx.budget.maxChars)
     case 'management.tabs.wait':
       return waitAction(args, ctx)
     default:

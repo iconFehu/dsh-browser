@@ -466,7 +466,7 @@ async function dispatchOnce(
       tabId,
       call,
       frame,
-      requestPageDelta ? budget : undefined,
+      requestPageDelta || call.name === 'etherscan.recentTokenTransfers' ? budget : undefined,
       requestPageDelta,
     )
   } catch (error: unknown) {
@@ -503,7 +503,7 @@ async function dispatchOnce(
   } else {
     navigationWait?.cancel()
   }
-  if (call.name === 'pageAssets.getText') {
+  if (call.name === 'pageAssets.getText' || call.name === 'etherscan.recentTokenTransfers') {
     return { ok: true, result: { text: wrapUntrustedContent(text, budget.maxChars) } }
   }
   const pageContent = requestPageDelta ? answerPageContent(response) : undefined
@@ -758,7 +758,7 @@ export async function dispatchToolCall(
   // Privacy boundary: with sharing off, no page content may leave the page.
   if (!tabManagement.unrestrictedAccess
     && sharePageContent === 'off'
-    && (call.name === 'pageAssets.snapshot' || call.name === 'pageAssets.getText')) {
+    && (call.name === 'pageAssets.snapshot' || call.name === 'pageAssets.getText' || call.name === 'etherscan.recentTokenTransfers')) {
     return { ok: false, error: { code: 'action-failed', message: 'Page content sharing is disabled in Settings > Page content sharing.' } }
   }
   const tab = targetTab ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]

@@ -47,11 +47,12 @@ Playwright / 扩展的配对耗时比为 **1.24**（95% CI **1.16–1.34**）：
 
 ## 核心能力
 
-模型看到的是 7 个高层能力工具。每次调用指定 `method`（`management` 还要指定 `namespace`），例如 `management` 配 `namespace=tabs, method=list`。
+模型看到的是 8 个高层能力工具。每次调用指定 `method`（`management` 还要指定 `namespace`），例如 `management` 配 `namespace=tabs, method=list`。
 
 | 能力 | 已端到端接通的方法 | 说明 |
 |---|---|---|
 | `pageAssets` | `snapshot` / `getText` | 结构化文本快照（标题/URL/正文/编号交互清单/表单字段，敏感值掩码；`delta: true` 只返回变化），或读取整页/选择器范围内的纯文本 |
+| `etherscan` | `recentTokenTransfers` | 可选适配器：在 Etherscan ERC-20 代币页按该页 Transfers 列表的分页请求读取最近转账；默认最近 30 分钟、每页 100 条，返回固定时间窗口、记录和续取位置；超过输出预算或网页最近 10k 条上限时明确标记未取全 |
 | `management` | `tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | 按最新快照的编号操作元素（兼容 React/Vue 受控组件，`replace` 先清空），发送按键、滚动、等待页面稳定，以及在历史中前进后退 |
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | 列出标签页的稳定 ID 与活动/受控状态、打开 URL（`active:false` 时保持当前页在前台）、在受控页导航、跟随已列出的标签页而不激活它，或关闭一个已列出的标签页 |
 | `management`（Chrome） | `bookmarks.search` / `create` / `update` / `delete`、`history.search`、`downloads.list`、`tabGroups.list` / `create` / `ungroup` | 浏览器 API 操作；会改动状态的操作需要确认 |

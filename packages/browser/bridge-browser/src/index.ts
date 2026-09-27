@@ -1,6 +1,6 @@
 /**
  * `@yuxianglin/dsh-bridge-browser`: token-authenticated WebSocket bridge for
- * the browser extension plus the seven high-level browser capability tools.
+ * the browser extension plus the high-level browser capability tools.
  *
  * The bridge mounts its own upgrade route (`/ext/bridge`) on the host
  * webserver, OUTSIDE the /api trust fence — so it brings its own bearer-token
@@ -281,8 +281,8 @@ function mountBridge(
     ctx.effect(() => systemPrompt.section({
       name: 'tool:bridge-browser',
       order: 107,
-      text: 'A browser bridge may be connected. Use the seven high-level browser capabilities '
-        + '(pageAssets, management, cdp, browserAuth, botDetection, viewport, and visibility). '
+      text: 'A browser bridge may be connected. Use the eight high-level browser capabilities '
+        + '(pageAssets, management, cdp, etherscan, browserAuth, botDetection, viewport, and visibility). '
         + 'When a sign-in is required, call browserAuth method=request and let the user type credentials on the page; never ask for passwords in chat. '
         + 'When a page blocks you with a CAPTCHA or access denial, call botDetection method=report instead of trying to get around it. '
         + 'To read or operate the user\'s page, call pageAssets method=snapshot (numbered items are the click/type targets), '

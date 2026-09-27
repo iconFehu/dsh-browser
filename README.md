@@ -47,11 +47,12 @@ The paired Playwright / extension duration ratio was **1.24** (95% CI **1.16–1
 
 ## Core capabilities
 
-The model sees seven high-level capability tools. Each call names a `method` (and, for `management`, a `namespace`), for example `management` with `namespace=tabs, method=list`.
+The model sees eight high-level capability tools. Each call names a `method` (and, for `management`, a `namespace`), for example `management` with `namespace=tabs, method=list`.
 
 | Capability | Methods wired end to end | Notes |
 |---|---|---|
 | `pageAssets` | `snapshot` / `getText` | Structured text snapshot (title, URL, main text, numbered controls, masked form fields; `delta: true` returns only changes), or plain text from the page or a selector |
+| `etherscan` | `recentTokenTransfers` | Optional adapter: on an Etherscan ERC-20 token page, read recent Transfers via the page's paginated list requests; default last 30 minutes / 100 rows per page; returns a fixed time window, rows, and continuation cursors; marks incomplete when output budget or Etherscan's last-10k limit is hit |
 | `management` | `tabs.click` / `type` / `press` / `scroll` / `wait` / `back` / `forward` | Operate numbered targets from the latest snapshot (React/Vue-compatible input; `replace` clears first), send keys, scroll, wait for the page to settle, and move through history |
 | `management` | `tabs.list` / `open` / `navigate` / `activate` / `reload` / `close` | List tabs with stable IDs and active/controlled state, open a URL (`active:false` keeps the current tab in front), navigate the controlled tab, follow a listed tab without activating it, or close one listed tab |
 | `management` (Chrome) | `bookmarks.search` / `create` / `update` / `delete`, `history.search`, `downloads.list`, `tabGroups.list` / `create` / `ungroup` | Browser API operations; state-changing ones require approval |
