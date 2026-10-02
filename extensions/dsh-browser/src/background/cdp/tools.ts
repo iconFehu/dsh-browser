@@ -25,8 +25,6 @@ import { renderMetrics } from './metrics.ts'
 import { CdpUnavailableError, type CdpManager } from './manager.ts'
 import type { ApprovalAuthorization, ApprovalPrompt } from '../../security/approval.ts'
 import {
-  CDP_DEVELOPER_MODE_HINT,
-  CDP_SESSION_DEBUGGER_HINT,
   DENIED_CDP_METHODS,
   isCdpMethodName,
 } from './session-debugger.ts'
