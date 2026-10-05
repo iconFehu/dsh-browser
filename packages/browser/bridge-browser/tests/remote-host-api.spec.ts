@@ -48,7 +48,7 @@ function harness(options: {
   return { api: createRemoteHostApi(gateway, connection), invoke, open, fetch }
 }
 
-describe('dsh 0.1.5 Remote Host adapter', () => {
+describe('dsh 0.2.x Remote Host adapter', () => {
   it('passes the signal in the fifth argument for DSH Desktop 2.x streams', async () => {
     const open = vi.fn(async (_endpoint: string, _payload: unknown, uplink: AsyncIterable<unknown>, peer: unknown, signal: AbortSignal) => {
       expect(typeof uplink[Symbol.asyncIterator]).toBe('function')

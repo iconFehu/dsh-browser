@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { once } from 'node:events'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -62,6 +63,15 @@ async function waitFor(check, label, timeout = 60_000) {
   throw new Error(`Timed out waiting for ${label}`)
 }
 
+/** Node's lookup order without requiring the package to export `./package.json`. */
+function packageDir(fromFile, name) {
+  for (const searchPath of createRequire(fromFile).resolve.paths(name) ?? []) {
+    const candidate = join(searchPath, name)
+    if (existsSync(join(candidate, 'package.json'))) return candidate
+  }
+  throw new Error(`Cannot resolve ${name} from ${fromFile}`)
+}
+
 async function command(args) {
   const child = spawn(process.execPath, [cli, ...args], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] })
   let output = ''
@@ -110,10 +120,14 @@ async function start(reopen) {
   assert.equal(response.status, 200)
   const config = await response.json()
   assert.equal(config.wsUrl, base.replace('http:', 'ws:') + '/ext/bridge')
-  // Inspect what the actual profile Loader resolves, not just workspace hoists.
-  const resolve = createRequire(join(home, 'profiles/web/package.json'))
+  // Inspect what the actual Loader resolves, not just workspace hoists. dsh
+  // 0.2.x resolves in-box bundles such as dsh-base from its own installation
+  // before the profile, so follow dsh -> dsh-base -> session packages.
+  const dshBase = packageDir(require.resolve('@deepseek-ai/dsh/package.json'), '@deepseek-ai/dsh-base')
+  const querySqlite = packageDir(join(dshBase, 'package.json'), '@deepseek-ai/dsh-session-query-sqlite')
+  const anchors = { 'dsh-session-query': querySqlite, 'dsh-session-projection-cache': dshBase }
   for (const name of ['dsh-session-query', 'dsh-session-projection-cache']) {
-    const path = resolve.resolve(`@deepseek-ai/${name}/package.json`)
+    const path = join(packageDir(join(anchors[name], 'package.json'), `@deepseek-ai/${name}`), 'package.json')
     const { version } = JSON.parse(await readFile(path, 'utf8'))
     console.log(`Host ${name}@${version}: ${path}`)
     assert.equal(version, expectedVersion, `Profile resolved an incompatible ${name} at ${path}`)

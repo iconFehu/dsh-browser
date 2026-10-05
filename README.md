@@ -8,10 +8,10 @@ Connect [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) to t
 
 `dsh` is DeepSeek AI's open-source, plugin-based agent harness. This repository provides a companion browser bridge plugin and Chrome/Firefox MV3 extension as one standalone pnpm workspace.
 
-Browser operation remains text-only: pages become structured text with a numbered inventory of interactive elements, and the model addresses those elements by number. dsh 0.1.5 multimodal chat is separate from that page channel—the side panel accepts PNG, JPEG, WebP, and GIF attachments when the host advertises image support, while browser tools still never capture screenshots.
+Browser operation remains text-only: pages become structured text with a numbered inventory of interactive elements, and the model addresses those elements by number. dsh 0.2.x multimodal chat is separate from that page channel—the side panel accepts PNG, JPEG, WebP, and GIF attachments when the host advertises image support, while browser tools still never capture screenshots.
 
 > [!IMPORTANT]
-> The workspace pins dsh 0.1.5-rc.2, the minimum supported runtime. Older DSH releases are not supported.
+> The workspace pins dsh 0.2.1-alpha.1; the bridge supports dsh 0.2.x (`>=0.2.0-0 <0.3.0-0`, including DSH Desktop's bundled 0.2.0 runtime). dsh 0.1.x is no longer supported: 0.2.x removed `@deepseek-ai/dsh-invariants` and the `agent/session-start` event, and refuses profile bundles whose `@deepseek-ai/dsh*` peers do not match. Stay on bridge 0.0.5 for dsh 0.1.5.
 
 ## Quick install
 
@@ -144,7 +144,7 @@ cd ~/.dsh/dsh-browser && pnpm start
 From a source checkout, run `pnpm start` in the repository root. The exact supported public runtime is:
 
 ```sh
-npx @deepseek-ai/dsh@0.1.5-rc.2 web
+npx @deepseek-ai/dsh@0.2.1-alpha.1 web
 ```
 
 Local Chrome use requires no configuration; Firefox requires the local bridge token described above. Open a page, click the DeepSeek whale icon, and wait for **Connected**. Existing HTTP(S) tabs are instrumented on the first action. On browser-protected pages and extension stores, the model can read tab metadata and use browser-level HTTP(S) navigation, back, forward, and reload, but it cannot inspect or operate the protected page DOM.
@@ -155,6 +155,7 @@ Local Chrome use requires no configuration; Firefox requires the local bridge to
 
 - Make sure dsh web is running locally (default `http://127.0.0.1:3080`).
 - Verify the bridge is loaded: open `http://127.0.0.1:3080/ext/bridge-config`. It should return JSON such as `{"wsUrl":"ws://127.0.0.1:3080/ext/bridge"}`. If it returns a web page instead of JSON, the running dsh predates the bridge registration — restart dsh and refresh the page; the extension reconnects on its own.
+- A 404 means the running host did not load the bridge bundle. The installer registers it in the `web` profile used by `dsh web`; DSH Desktop loads its own active profile (see `~/.dsh/desktop-next.json`). Rerun the installer with `DSH_BROWSER_PROFILE=<that profile>` (for example `DSH_BROWSER_PROFILE=work`), then restart Desktop. Check the host log for `skipping profile bundle`, which reports an incompatible dsh version.
 - The extension probes ports 3080, 3081, 3090, and 14389 automatically. If dsh runs on another port — or you use a remote `--host 0.0.0.0` deployment — set the address (and bridge token) in the panel settings. Firefox always requires the token.
 
 ## Development

@@ -381,8 +381,16 @@ if (-not $Root) { Install-RemoteWorkspace }
 
 $Ext = Join-Path $Root 'extensions\dsh-browser'
 $Plugin = Join-Path $Root 'packages\browser\bridge-browser'
-$WebProfileDir = Join-Path $DshHomeDir 'profiles\web'
-$WebProfileManifest = Join-Path $DshHomeDir 'profiles\web\package.json'
+# DSH_BROWSER_PROFILE selects the dsh profile that receives the bridge bundle.
+# `dsh web` uses `web`; DSH Desktop loads its own active profile (for example `work`).
+$TargetProfile = if ($env:DSH_BROWSER_PROFILE) { $env:DSH_BROWSER_PROFILE } else { 'web' }
+if ($TargetProfile -notmatch '^[A-Za-z0-9._-]+$' -or $TargetProfile -eq 'desktop' -or $TargetProfile.StartsWith('.')) {
+  Stop-Install `
+    "DSH_BROWSER_PROFILE=$TargetProfile 无效；只能使用字母、数字、点、下划线或连字符，且不能是 Desktop 托管的 desktop profile。" `
+    "DSH_BROWSER_PROFILE=$TargetProfile is invalid; use letters, digits, dots, underscores, or hyphens, and not the Desktop-managed desktop profile."
+}
+$WebProfileDir = Join-Path $DshHomeDir "profiles\$TargetProfile"
+$WebProfileManifest = Join-Path $WebProfileDir 'package.json'
 $DshCli = Join-Path $Root 'node_modules\@deepseek-ai\dsh\lib\bin.js'
 
 Assert-Command 'pnpm' "未找到 pnpm；请先启用 Corepack 或安装 pnpm。" "pnpm was not found; enable Corepack or install pnpm first."
@@ -394,12 +402,12 @@ Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' -Arguments @('install', '--
 Invoke-Quiet -WorkingDirectory $Root -Command 'pnpm' -Arguments @('--filter', $BridgePlugin, 'run', 'build') `
   -FailZh "桥插件构建失败。" -FailEn "The bridge plugin build failed."
 
-Write-Step 2 "注册到本机 web profile" "Register with the local web profile"
+Write-Step 2 "注册到本机 $TargetProfile profile" "Register with the local $TargetProfile profile"
 # Initialize through dsh without forwarding a package path through cmd.exe.
 if (-not (Test-Path -LiteralPath $WebProfileManifest -PathType Leaf)) {
   Invoke-Quiet -WorkingDirectory $Root -Command 'node' `
-    -Arguments @($DshCli, 'plugin', '--profile', 'web', 'install') `
-    -FailZh "初始化 web profile 失败。" -FailEn "Initializing the web profile failed."
+    -Arguments @($DshCli, 'plugin', '--profile', $TargetProfile, 'install') `
+    -FailZh "初始化 $TargetProfile profile 失败。" -FailEn "Initializing the $TargetProfile profile failed."
 }
 
 if (Test-ProfileDependency -Manifest $WebProfileManifest -PackageName $LegacyPlugin) {
@@ -513,6 +521,11 @@ Write-Pair "• 扩展会自动发现本机 dsh，无需填写地址或 token" "
 $QuotedRoot = "'" + $Root.Replace("'", "''") + "'"
 Write-Host ("• 启动固定版本：cd {0}; pnpm start" -f $QuotedRoot)
 Write-Host ("   Start the pinned version: cd {0}; pnpm start" -f $QuotedRoot)
-Write-Pair "• 或直接启动固定版本：npx @deepseek-ai/dsh@0.1.5-rc.2 web" "Or start the pinned version directly: npx @deepseek-ai/dsh@0.1.5-rc.2 web"
+Write-Pair "• 或直接启动固定版本：npx @deepseek-ai/dsh@0.2.1-alpha.1 web" "Or start the pinned version directly: npx @deepseek-ai/dsh@0.2.1-alpha.1 web"
+if ($TargetProfile -ne 'web') {
+  Write-Pair "• 桥插件已注册到 $TargetProfile profile；让 DSH Desktop 使用该 profile 后重启 Desktop。" "The bridge is registered in the $TargetProfile profile; restart DSH Desktop while that profile is active."
+} else {
+  Write-Pair "• DSH Desktop 用户：用 DSH_BROWSER_PROFILE=<Desktop 当前 profile> 重新运行安装器，然后重启 Desktop。" "DSH Desktop users: rerun the installer with DSH_BROWSER_PROFILE=<Desktop's active profile>, then restart Desktop."
+}
 Write-Host ''
 Write-Pair "如果用得顺手，欢迎在 GitHub 点个 Star 支持我们：https://github.com/Lum1104/dsh-browser" "If dsh-browser is useful to you, we'd appreciate a Star on GitHub: https://github.com/Lum1104/dsh-browser"

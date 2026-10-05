@@ -3,8 +3,8 @@
  *
  * The extension captures the page immediately after the user chooses to
  * follow it. A live Agent receives that snapshot at once; a deferred session
- * keeps only its newest snapshot until `agent/session-start` publishes the
- * Agent. Live inboxes also keep only the newest unclaimed browser snapshot.
+ * keeps only its newest snapshot until `agent/created` publishes the Agent.
+ * Live inboxes also keep only the newest unclaimed browser snapshot.
  * Injection deliberately does not wake an idle Agent — the snapshot is
  * claimed together with the user's next message.
  *
@@ -12,10 +12,29 @@
  */
 
 import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
-import { createUserMessage, type UserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type ContextFormed, type UserMessage } from '@deepseek-ai/dsh-llm'
 
-/** Provenance key used for snapshot supersession and transcript presentation. */
+/** Package that produces browser page context (legacy `plugin` source field). */
 export const BROWSER_CONTEXT_PLUGIN = '@yuxianglin/dsh-bridge-browser'
+
+/**
+ * Producer-owned message source kind. DSH 0.2.x (session format v4) refuses the
+ * retired `{ kind: 'plugin', plugin }` wrapper, so each producer declares its
+ * own kind instead.
+ */
+export const BROWSER_CONTEXT_KIND = 'dsh-bridge-browser'
+
+/** Kind the v3→v4 session-format migration assigns to this package's old `plugin` sources. */
+const MIGRATED_BROWSER_CONTEXT_KIND = `plugin:${BROWSER_CONTEXT_PLUGIN}`
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Followed-page snapshot injected by the browser bridge. */
+    'dsh-bridge-browser': {
+      kind: 'dsh-bridge-browser'
+    } & ContextFormed
+  }
+}
 
 /** Bound orphaned provisional sessions while retaining normal recent tabs. */
 const DEFAULT_MAX_PENDING = 32
@@ -30,20 +49,30 @@ export function createBrowserSnapshotMessage(snapshot: string): UserMessage {
   return createUserMessage({
     content: [{ type: 'text', text }],
     source: {
-      kind: 'plugin',
-      plugin: BROWSER_CONTEXT_PLUGIN,
+      kind: BROWSER_CONTEXT_KIND,
       form: 'snapshot',
       sections: [{ name: 'browser-page', text }],
     },
   })
 }
 
+/**
+ * Whether a pending message is a browser snapshot produced by this package,
+ * including sources written by older releases (`kind: 'plugin'`) or rewritten
+ * by the v3→v4 session-format migration (`kind: 'plugin:<package>'`).
+ */
+export function isBrowserSnapshotSource(source: UserMessage['source']): boolean {
+  const record = source as { readonly kind?: unknown; readonly plugin?: unknown; readonly form?: unknown }
+  if (record.form !== 'snapshot') return false
+  return record.kind === BROWSER_CONTEXT_KIND
+    || record.kind === MIGRATED_BROWSER_CONTEXT_KIND
+    || (record.kind === 'plugin' && record.plugin === BROWSER_CONTEXT_PLUGIN)
+}
+
 /** Supersede pending tab context through the durable Inbox command surface. */
 function injectLatestSnapshot(agent: Agent, snapshot: string): void {
   for (const message of agent.inbox.nextStep) {
-    if (message.source.kind === 'plugin'
-      && message.source.plugin === BROWSER_CONTEXT_PLUGIN
-      && message.source.form === 'snapshot') {
+    if (isBrowserSnapshotSource(message.source)) {
       agent.inbox.remove(message.id)
     }
   }

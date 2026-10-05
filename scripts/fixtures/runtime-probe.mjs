@@ -24,7 +24,7 @@ export async function apply(ctx, config) {
     if (session.id !== config.sessionId) return
     // Persist a blank session without an LLM call so restart exercises reads
     // from disk even though normal empty sessions may be deferred.
-    // 0.1.5 owns writes through AgentLoop's SessionHandle; the service flush
+    // 0.2.x owns writes through AgentLoop's SessionHandle; the service flush
     // barrier drains those handles and materializes even an empty session.
     await ctx.sessionPersistence.flush()
     await writeFile(config.marker, JSON.stringify({ sessionId: session.id }))

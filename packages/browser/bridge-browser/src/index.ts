@@ -5,8 +5,8 @@
  * The bridge mounts its own upgrade route (`/ext/bridge`) on the host
  * webserver, OUTSIDE the /api trust fence — so it brings its own bearer-token
  * authentication (first frame `hello` within HELLO_TIMEOUT_MS). Extension
- * calls, Session streams, and Host waterfalls use dsh 0.1.5's Typert Gateway
- * and Connection services.
+ * calls, Session streams, and Host waterfalls use the dsh 0.2.x Typert Gateway
+ * and Connection services (tested against 0.2.0-rc.2 and 0.2.1-alpha.1).
  * Tools execute by dispatching
  * `capability.call` frames to the connected extension, which performs the action in
  * the tab explicitly controlled by the user.
@@ -141,7 +141,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const gateway = ctx.get('typertGateway') as unknown as GatewayCandidate | undefined
   const connection = ctx.get('connection') as unknown as HostConnectionLike | undefined
   if (gateway === undefined || !hasRemoteWireStream(gateway)) {
-    throw new Error('bridge-browser: dsh 0.1.5-rc.2 or a compatible newer runtime is required (Gateway wireStream unavailable)')
+    throw new Error('bridge-browser: dsh 0.2.x is required (Gateway wireStream unavailable)')
   }
   if (connection === undefined) throw new Error('bridge-browser: dsh connection service is required')
   const tokenRes = await resolveToken(resolved.token)
@@ -166,8 +166,11 @@ function mountBridge(
     ctx.get('attachments')?.imageLimits,
   )
   const browserContext = new BrowserContextInjector(ctx.agents)
-  ctx.on('agent/session-start', ({ agent }) => {
+  // dsh 0.2.x publishes per-agent initialization as the serial
+  // `agent/created` event (the 0.1.x `agent/session-start` was removed).
+  ctx.on('agent/created', ({ agent }) => {
     browserContext.activate(agent)
+    return undefined
   })
 
   const purgeSession = async (sessionId: string): Promise<void> => {

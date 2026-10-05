@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Agent, AgentRegistry } from '@deepseek-ai/dsh-agent'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import {
+  BROWSER_CONTEXT_KIND,
   BROWSER_CONTEXT_PLUGIN,
   BrowserContextInjector,
   createBrowserSnapshotMessage,
+  isBrowserSnapshotSource,
 } from '../src/browser-context.ts'
 
 function fakeAgent(id: string): Agent & { inject: ReturnType<typeof vi.fn> } {
@@ -16,8 +19,7 @@ describe('browser page context', () => {
 
     expect(message.role).toBe('user')
     expect(message.source).toEqual({
-      kind: 'plugin',
-      plugin: BROWSER_CONTEXT_PLUGIN,
+      kind: BROWSER_CONTEXT_KIND,
       form: 'snapshot',
       sections: [{
         name: 'browser-page',
@@ -85,5 +87,32 @@ describe('browser page context', () => {
     expect(injector.activate(first)).toBe(false)
     expect(injector.activate(second)).toBe(true)
     expect(injector.activate(third)).toBe(true)
+  })
+
+  it('never emits the retired plugin source wrapper rejected by session format v4', () => {
+    const source = createBrowserSnapshotMessage('Page').source as Record<string, unknown>
+    expect(source.kind).not.toBe('plugin')
+    expect(source).not.toHaveProperty('plugin')
+  })
+
+  it('recognizes current, legacy, and migrated snapshot sources for supersession', () => {
+    const source = (value: Record<string, unknown>): UserMessage['source'] => value as unknown as UserMessage['source']
+    expect(isBrowserSnapshotSource(source({ kind: BROWSER_CONTEXT_KIND, form: 'snapshot', sections: [] }))).toBe(true)
+    expect(isBrowserSnapshotSource(source({ kind: 'plugin', plugin: BROWSER_CONTEXT_PLUGIN, form: 'snapshot', sections: [] }))).toBe(true)
+    expect(isBrowserSnapshotSource(source({ kind: `plugin:${BROWSER_CONTEXT_PLUGIN}`, form: 'snapshot', sections: [] }))).toBe(true)
+    expect(isBrowserSnapshotSource(source({ kind: 'plugin', plugin: 'other', form: 'snapshot', sections: [] }))).toBe(false)
+    expect(isBrowserSnapshotSource(source({ kind: BROWSER_CONTEXT_KIND, form: 'notice', summary: 'x' }))).toBe(false)
+    expect(isBrowserSnapshotSource(source({ kind: 'human' }))).toBe(false)
+  })
+
+  it('supersedes a pending browser snapshot in a live inbox', () => {
+    const stale = createBrowserSnapshotMessage('Stale page')
+    const remove = vi.fn()
+    const agent = { id: 'session-supersede', inbox: { nextStep: [stale], remove }, inject: vi.fn() } as unknown as Agent & { inject: ReturnType<typeof vi.fn> }
+    const injector = new BrowserContextInjector({ get: vi.fn(() => agent) } as unknown as Pick<AgentRegistry, 'get'>)
+
+    expect(injector.inject('session-supersede', 'Fresh page')).toBe('injected')
+    expect(remove).toHaveBeenCalledWith(stale.id)
+    expect(agent.inject.mock.calls[0]![0].content[0].text).toContain('Fresh page')
   })
 })

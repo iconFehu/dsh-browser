@@ -300,7 +300,16 @@ fi
 
 EXT="$ROOT/extensions/dsh-browser"
 PLUGIN="$ROOT/packages/browser/bridge-browser"
-WEB_PROFILE_MANIFEST="$DSH_HOME_DIR/profiles/web/package.json"
+# DSH_BROWSER_PROFILE selects the dsh profile that receives the bridge bundle.
+# `dsh web` uses `web`; DSH Desktop loads its own active profile (for example `work`).
+TARGET_PROFILE="${DSH_BROWSER_PROFILE:-web}"
+case "$TARGET_PROFILE" in
+  desktop|.*|*[!A-Za-z0-9._-]*)
+    fail_pair "DSH_BROWSER_PROFILE=$TARGET_PROFILE 无效；只能使用字母、数字、点、下划线或连字符，且不能是 Desktop 托管的 desktop profile。" \
+      "DSH_BROWSER_PROFILE=$TARGET_PROFILE is invalid; use letters, digits, dots, underscores, or hyphens, and not the Desktop-managed desktop profile."
+    ;;
+esac
+WEB_PROFILE_MANIFEST="$DSH_HOME_DIR/profiles/$TARGET_PROFILE/package.json"
 LEGACY_PLUGIN="@deepseek-ai/dsh-bridge-browser"
 
 profile_has_dependency() {
@@ -322,11 +331,11 @@ print_step 1 "构建浏览器桥" "Build the browser bridge"
 (cd "$ROOT" && pnpm install --frozen-lockfile >/dev/null 2>&1)
 (cd "$ROOT" && pnpm --filter @yuxianglin/dsh-bridge-browser run build >/dev/null 2>&1)
 
-print_step 2 "注册到本机 web profile" "Register with the local web profile"
+print_step 2 "注册到本机 $TARGET_PROFILE profile" "Register with the local $TARGET_PROFILE profile"
 if profile_has_dependency "$WEB_PROFILE_MANIFEST" "$LEGACY_PLUGIN"; then
-  (cd "$ROOT" && pnpm exec dsh plugin --profile web remove "$LEGACY_PLUGIN" >/dev/null)
+  (cd "$ROOT" && pnpm exec dsh plugin --profile "$TARGET_PROFILE" remove "$LEGACY_PLUGIN" >/dev/null)
 fi
-(cd "$ROOT" && pnpm exec dsh plugin --profile web add -w "@yuxianglin/dsh-bridge-browser@link:$PLUGIN" >/dev/null)
+(cd "$ROOT" && pnpm exec dsh plugin --profile "$TARGET_PROFILE" add -w "@yuxianglin/dsh-bridge-browser@link:$PLUGIN" >/dev/null)
 
 print_step 3 "构建 Chrome 扩展" "Build the Chrome extension"
 (cd "$ROOT" && pnpm --filter dsh-browser-extension run build >/dev/null 2>&1)
@@ -418,6 +427,11 @@ print_pair "• 点击工具栏中的 DeepSeek 鲸鱼图标，打开侧边栏" "
 print_pair "• 扩展会自动发现本机 dsh，无需填写地址或 token" "The extension discovers local dsh automatically; no address or token is required"
 printf '• 启动固定版本：cd %q && pnpm start\n' "$ROOT"
 printf '   Start the pinned version: cd %q && pnpm start\n' "$ROOT"
-print_pair "• 或直接启动固定版本：npx @deepseek-ai/dsh@0.1.5-rc.2 web" "Or start the pinned version directly: npx @deepseek-ai/dsh@0.1.5-rc.2 web"
+print_pair "• 或直接启动固定版本：npx @deepseek-ai/dsh@0.2.1-alpha.1 web" "Or start the pinned version directly: npx @deepseek-ai/dsh@0.2.1-alpha.1 web"
+if [ "$TARGET_PROFILE" != "web" ]; then
+  print_pair "• 桥插件已注册到 $TARGET_PROFILE profile；让 DSH Desktop 使用该 profile 后重启 Desktop。" "The bridge is registered in the $TARGET_PROFILE profile; restart DSH Desktop while that profile is active."
+else
+  print_pair "• DSH Desktop 用户：用 DSH_BROWSER_PROFILE=<Desktop 当前 profile> 重新运行安装器，然后重启 Desktop。" "DSH Desktop users: rerun the installer with DSH_BROWSER_PROFILE=<Desktop's active profile>, then restart Desktop."
+fi
 printf '\n'
 print_pair "如果用得顺手，欢迎在 GitHub 点个 Star 支持我们：https://github.com/Lum1104/dsh-browser" "If dsh-browser is useful to you, we'd appreciate a Star on GitHub: https://github.com/Lum1104/dsh-browser"

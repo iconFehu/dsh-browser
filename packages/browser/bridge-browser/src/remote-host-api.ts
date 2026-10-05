@@ -1,5 +1,5 @@
 /**
- * dsh 0.1.5 Host adapter.
+ * dsh 0.2.x Host adapter.
  *
  * Unary calls go directly through TypertGateway. Long-lived Session and
  * forwarded-event streams use the Gateway wire seam, while `$events/result`
@@ -23,7 +23,7 @@ import {
 } from './extension-sessions.ts'
 import type { RespondResult } from './protocol.ts'
 
-/** Structural subset of dsh 0.1.5's Host TypertGateway service. */
+/** Structural subset of the dsh 0.2.x Host TypertGateway service. */
 export interface TypertGatewayLike {
   readonly wireStream: {
     open(endpoint: string, payload: unknown, signalOrUplink: AbortSignal | AsyncIterable<unknown>, peer?: unknown, signal?: AbortSignal): Promise<AsyncIterable<unknown>>
@@ -37,7 +37,10 @@ export interface TypertGatewayLike {
   }): Promise<unknown>
 }
 
-/** DSH Desktop 2.x added an uplink and peer before the stream signal. */
+/**
+ * dsh 0.2.x (and DSH Desktop 2.x) take `(endpoint, payload, uplink, peer, signal)`;
+ * the 3-argument shape is kept for structural test doubles.
+ */
 function openWireStream(gateway: TypertGatewayLike, endpoint: string, payload: unknown, signal: AbortSignal): Promise<AsyncIterable<unknown>> {
   const open = gateway.wireStream.open
   if (open.length >= 5) {
@@ -47,7 +50,7 @@ function openWireStream(gateway: TypertGatewayLike, endpoint: string, payload: u
   return open(endpoint, payload, signal)
 }
 
-/** Structural subset of dsh 0.1.5's Host Connection service. */
+/** Structural subset of the dsh 0.2.x Host Connection service. */
 export interface HostConnectionLike {
   createSharedFetchHandler(channel: '/api'): {
     fetch(request: Request): Promise<Response>
@@ -76,7 +79,7 @@ interface PendingQuestion {
   settled: boolean
 }
 
-/** Build the dsh 0.1.5 Host implementation. */
+/** Build the dsh 0.2.x Host implementation. */
 export function createRemoteHostApi(
   gateway: TypertGatewayLike,
   connection: HostConnectionLike,

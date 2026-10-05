@@ -8,10 +8,10 @@
 
 `dsh` 是由 DeepSeek AI 开发的开源、插件化 agent harness（智能体框架）。本仓库将配套的浏览器桥插件与 Chrome/Firefox MV3 扩展组成一个独立的 pnpm workspace。
 
-浏览器操作仍采用纯文本设计：页面会转换为结构化文本和带编号的交互元素清单，模型通过编号定位元素。dsh 0.1.5 的多模态对话走独立通道——宿主声明图片能力时，侧栏可发送 PNG、JPEG、WebP 和 GIF；浏览器工具本身仍不会截取页面截图。
+浏览器操作仍采用纯文本设计：页面会转换为结构化文本和带编号的交互元素清单，模型通过编号定位元素。dsh 0.2.x 的多模态对话走独立通道——宿主声明图片能力时，侧栏可发送 PNG、JPEG、WebP 和 GIF；浏览器工具本身仍不会截取页面截图。
 
 > [!IMPORTANT]
-> 当前工作区固定使用 dsh 0.1.5-rc.2，也是最低支持版本；不再支持旧版 DSH。
+> 当前工作区固定使用 dsh 0.2.1-alpha.1；桥插件支持 dsh 0.2.x（`>=0.2.0-0 <0.3.0-0`，包括 DSH Desktop 内置的 0.2.0 运行时）。不再支持 dsh 0.1.x：0.2.x 移除了 `@deepseek-ai/dsh-invariants` 与 `agent/session-start` 事件，并会跳过 `@deepseek-ai/dsh*` peer 版本不匹配的 profile bundle。dsh 0.1.5 用户请继续使用桥插件 0.0.5。
 
 ## 快速安装
 
@@ -144,7 +144,7 @@ cd ~/.dsh/dsh-browser && pnpm start
 使用源码 checkout 时，请在仓库根目录运行 `pnpm start`。受支持的精确公开版本为：
 
 ```sh
-npx @deepseek-ai/dsh@0.1.5-rc.2 web
+npx @deepseek-ai/dsh@0.2.1-alpha.1 web
 ```
 
 Chrome 本机使用无需配置；Firefox 需要填写上述本地桥 token。打开页面，点击 DeepSeek 鲸鱼图标，等待侧边栏显示**已连接**。已有 HTTP(S) 标签页会在第一次操作时自动加载。在浏览器受保护页面和扩展商店中，模型可以读取标签页元数据，并通过浏览器级能力导航到 HTTP(S)、后退、前进和刷新，但不能读取或操作受保护页面的 DOM。
@@ -155,6 +155,7 @@ Chrome 本机使用无需配置；Firefox 需要填写上述本地桥 token。�
 
 - 确认本机 dsh web 正在运行（默认 `http://127.0.0.1:3080`）。
 - 确认桥接已加载：浏览器打开 `http://127.0.0.1:3080/ext/bridge-config`，应返回类似 `{"wsUrl":"ws://127.0.0.1:3080/ext/bridge"}` 的 JSON。如果返回的是网页而不是 JSON，说明当前运行的 dsh 早于桥接注册——重启 dsh 并刷新页面即可，扩展会自动重连。
+- 返回 404 说明当前宿主没有加载桥插件。安装器默认注册到 `dsh web` 使用的 `web` profile；DSH Desktop 加载的是它自己的当前 profile（见 `~/.dsh/desktop-next.json`）。请用 `DSH_BROWSER_PROFILE=<该 profile>`（例如 `DSH_BROWSER_PROFILE=work`）重新运行安装器，然后重启 Desktop。宿主日志中的 `skipping profile bundle` 表示 dsh 版本不兼容。
 - 扩展会自动探测 3080/3081/3090/14389 端口。若 dsh 运行在其它端口，或使用 `--host 0.0.0.0` 远程部署，请在面板设置中填写地址与桥接 token。Firefox 始终需要 token。
 
 ## 开发
