@@ -34,6 +34,7 @@ export interface TypertGatewayLike {
     readonly method: string
     readonly args: Readonly<Record<string, unknown>>
     readonly signal?: AbortSignal
+    readonly peer?: unknown
   }): Promise<unknown>
 }
 
@@ -52,8 +53,9 @@ function openWireStream(gateway: TypertGatewayLike, endpoint: string, payload: u
 
 /** Structural subset of the dsh 0.2.x Host Connection service. */
 export interface HostConnectionLike {
+  createPeer?(options: { principal: { kind: 'owner' }; interactions: 'answer' }): unknown
   createSharedFetchHandler(channel: '/api'): {
-    fetch(request: Request): Promise<Response>
+    fetch(request: Request, peer?: unknown): Promise<Response>
   }
 }
 
@@ -84,6 +86,29 @@ export function createRemoteHostApi(
   gateway: TypertGatewayLike,
   connection: HostConnectionLike,
 ): BrowserHostApi {
+  // Newer Hosts require an admitted Peer on every in-process call, including
+  // event streams and interaction answers. Connection owns its scoped lifetime.
+  if (connection.createPeer !== undefined) {
+    const peer = connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
+    const admittedGateway: TypertGatewayLike = {
+      invoke: request => gateway.invoke({ ...request, peer }),
+      wireStream: {
+        open: (endpoint, payload, _uplink, _peer, signal) => {
+          if (signal === undefined) throw new TypeError('bridge stream requires an AbortSignal')
+          const uplink = { async *[Symbol.asyncIterator](): AsyncGenerator<unknown> {} }
+          return gateway.wireStream.open(endpoint, payload, uplink, peer, signal)
+        },
+        failure: error => gateway.wireStream.failure(error),
+      },
+    }
+    const admittedConnection: HostConnectionLike = {
+      createSharedFetchHandler: channel => {
+        const handler = connection.createSharedFetchHandler(channel)
+        return { fetch: request => handler.fetch(request, peer) }
+      },
+    }
+    return new RemoteHostApi(admittedGateway, admittedConnection)
+  }
   return new RemoteHostApi(gateway, connection)
 }
 
