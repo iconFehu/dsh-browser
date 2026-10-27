@@ -178,12 +178,150 @@ describe('dispatchToolCall', () => {
 
     expect(answer).toMatchObject({
       ok: false,
-      error: { code: 'content-unavailable', message: expect.stringContaining('operation was dispatched') },
+      error: { code: 'content-unavailable', message: expect.stringContaining('effect is unknown') },
     })
     expect(commitAction).toHaveBeenCalledOnce()
     expect(rollbackActionCommit).not.toHaveBeenCalled()
     expect(chromeMock.sendMessage).toHaveBeenCalledOnce()
     expect(chromeMock.executeScript).not.toHaveBeenCalled()
+  })
+
+  it('reports an unknown action outcome if the recovered content script also stops responding', async () => {
+    const chromeMock = mockChrome({
+      tab: { id: 7, url: 'https://example.com/form' },
+      responses: [
+        new Error('Could not establish connection. Receiving end does not exist.'),
+        new Error('The message port closed before a response was received.'),
+      ],
+    })
+
+    const answer = await dispatchToolCall(
+      { id: 'recovered-port-closed', name: 'management.tabs.press', args: { key: 'Enter' } },
+      'auto',
+      undefined,
+      async () => 'approved',
+      undefined,
+      undefined,
+      undefined,
+      { unrestrictedAccess: true },
+    )
+
+    expect(answer).toMatchObject({
+      ok: false,
+      error: { code: 'content-unavailable', message: expect.stringContaining('effect is unknown') },
+    })
+    expect(chromeMock.sendMessage).toHaveBeenCalledTimes(2)
+    expect(chromeMock.executeScript).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, true])('requests a snapshot when a read response port closes (recovered: %s)', async (recovered) => {
+    const portClosed = new Error('The message port closed before a response was received.')
+    const chromeMock = mockChrome({
+      tab: { id: 7, url: 'https://example.com/form' },
+      responses: recovered
+        ? [new Error('Could not establish connection. Receiving end does not exist.'), portClosed]
+        : [portClosed],
+    })
+    const commitAction = vi.fn()
+    const rollbackActionCommit = vi.fn()
+
+    const answer = await dispatchToolCall(
+      { id: 'read-port-closed', name: 'pageAssets.getText', args: {} },
+      'auto',
+      undefined,
+      async () => 'approved',
+      undefined,
+      undefined,
+      undefined,
+      { unrestrictedAccess: true, commitAction, rollbackActionCommit },
+    )
+
+    expect(answer).toEqual({
+      ok: false,
+      error: {
+        code: 'content-unavailable',
+        message: 'The content script stopped responding. Call pageAssets.snapshot before continuing.',
+      },
+    })
+    expect(commitAction).not.toHaveBeenCalled()
+    expect(rollbackActionCommit).not.toHaveBeenCalled()
+    expect(chromeMock.sendMessage).toHaveBeenCalledTimes(recovered ? 2 : 1)
+    expect(chromeMock.executeScript).toHaveBeenCalledTimes(recovered ? 1 : 0)
+  })
+
+  it('reports safe retry and rolls back both commits when recovery still has no receiver', async () => {
+    const chromeMock = mockChrome({
+      tab: { id: 7, url: 'https://example.com/form' },
+      responses: [
+        new Error('Could not establish connection. Receiving end does not exist.'),
+        new Error('Could not establish connection. Receiving end does not exist.'),
+      ],
+    })
+    let committed = false
+    const commitAction = vi.fn(() => { committed = true })
+    const rollbackActionCommit = vi.fn(() => { committed = false })
+
+    const answer = await dispatchToolCall(
+      { id: 'recovered-no-receiver', name: 'management.tabs.press', args: { key: 'Enter' } },
+      'auto',
+      undefined,
+      async () => 'approved',
+      undefined,
+      undefined,
+      undefined,
+      { unrestrictedAccess: true, commitAction, rollbackActionCommit },
+    )
+
+    expect(answer).toMatchObject({
+      ok: false,
+      error: { code: 'content-unavailable', message: expect.stringContaining('not dispatched') },
+    })
+    expect(answer.error?.message).toContain('safe to retry')
+    expect(answer.error?.message).not.toContain('effect is unknown')
+    expect(answer.error?.message).not.toContain('Do not repeat')
+    expect(commitAction).toHaveBeenCalledTimes(2)
+    expect(rollbackActionCommit).toHaveBeenCalledTimes(2)
+    expect(commitAction.mock.invocationCallOrder[0]).toBeLessThan(rollbackActionCommit.mock.invocationCallOrder[0]!)
+    expect(rollbackActionCommit.mock.invocationCallOrder[0]).toBeLessThan(commitAction.mock.invocationCallOrder[1]!)
+    expect(commitAction.mock.invocationCallOrder[1]).toBeLessThan(rollbackActionCommit.mock.invocationCallOrder[1]!)
+    expect(committed).toBe(false)
+    expect(chromeMock.sendMessage).toHaveBeenCalledTimes(2)
+    expect(chromeMock.executeScript).toHaveBeenCalledOnce()
+  })
+
+  it('does not claim dispatch if recovery fails before sending the action', async () => {
+    const chromeMock = mockChrome({
+      tab: { id: 7, url: 'https://example.com/form' },
+      responses: [new Error('Could not establish connection. Receiving end does not exist.')],
+    })
+    const commitAction = vi.fn()
+    const rollbackActionCommit = vi.fn()
+    const targetStillAllowed = () => {
+      if (chromeMock.executeScript.mock.calls.length > 0) throw new Error('Target check failed')
+      return true
+    }
+
+    const answer = await dispatchToolCall(
+      { id: 'recovery-pre-dispatch', name: 'management.tabs.press', args: { key: 'Enter' } },
+      'auto',
+      undefined,
+      async () => 'approved',
+      undefined,
+      undefined,
+      targetStillAllowed,
+      { unrestrictedAccess: true, commitAction, rollbackActionCommit },
+    )
+
+    expect(answer).toMatchObject({
+      ok: false,
+      error: { code: 'content-unavailable', message: expect.stringContaining('not dispatched') },
+    })
+    expect(answer.error?.message).toContain('safe to retry')
+    expect(answer.error?.message).not.toContain('effect is unknown')
+    expect(commitAction).toHaveBeenCalledOnce()
+    expect(rollbackActionCommit).toHaveBeenCalledOnce()
+    expect(chromeMock.sendMessage).toHaveBeenCalledOnce()
+    expect(chromeMock.executeScript).toHaveBeenCalledOnce()
   })
 
   it('returns browser-level metadata without injecting into Chrome internal pages', async () => {

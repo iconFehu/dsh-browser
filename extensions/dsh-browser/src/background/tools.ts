@@ -174,6 +174,16 @@ function unavailable(message: string): ToolAnswer {
   return { ok: false, error: { code: 'content-unavailable', message } }
 }
 
+function interruptedActionMessage(call: ToolCall, dispatched: boolean): string {
+  if (!dispatched) {
+    return 'The operation was not dispatched. Call pageAssets.snapshot before retrying; it is safe to retry this operation.'
+  }
+  if (STATE_CHANGING_PAGE_TOOLS.has(call.name)) {
+    return 'The content script stopped responding after the action was dispatched. Its effect is unknown. Read the current page state and, for transactions, check positions and order history before deciding whether to retry. Do not repeat the action automatically.'
+  }
+  return 'The content script stopped responding. Call pageAssets.snapshot before continuing.'
+}
+
 function tabMetadataSnapshot(
   tabId: number,
   windowId: number | undefined,
@@ -821,7 +831,7 @@ export async function dispatchToolCall(
   } catch (error: unknown) {
     if (isCancelled(call, signal)) return cancelled()
     if (!contentScriptReceiverMissing(error)) {
-      return unavailable('The content script stopped responding after the operation was dispatched. Call pageAssets.snapshot before continuing.')
+      return unavailable(interruptedActionMessage(call, true))
     }
     // Manifest content scripts do not run retroactively in tabs that were
     // already open when an unpacked extension was installed or reloaded.
@@ -832,6 +842,7 @@ export async function dispatchToolCall(
       return await dispatchTabNativeTool(tab.id, tab.url, tab.title, tab.windowId, call, effectiveBudget, signal, targetStillAllowed, tabManagement.commitAction)
         ?? unavailable('The content script could not be loaded on this page. Its DOM does not support browser operations.')
     }
+    let recoveryDispatchStarted = false
     try {
       if (isCancelled(call, signal)) return cancelled()
       if (targetStillAllowed?.() === false) return targetChanged()
@@ -848,6 +859,7 @@ export async function dispatchToolCall(
           return unavailable('The page changed while the content script was loading. Call pageAssets.snapshot again before retrying.')
         }
       }
+      recoveryDispatchStarted = true
       return await dispatchOnce(
         tab.id,
         refreshedFrames,
@@ -859,8 +871,8 @@ export async function dispatchToolCall(
         tabManagement.commitAction,
         tabManagement.rollbackActionCommit,
       )
-    } catch {
-      return unavailable('The content script did not answer after it was loaded. Call pageAssets.snapshot again before retrying.')
+    } catch (error: unknown) {
+      return unavailable(interruptedActionMessage(call, recoveryDispatchStarted && !contentScriptReceiverMissing(error)))
     }
   }
 }
