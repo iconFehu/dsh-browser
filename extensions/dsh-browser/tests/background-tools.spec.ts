@@ -134,12 +134,20 @@ describe('dispatchToolCall', () => {
     expect(chromeMock.executeScript).not.toHaveBeenCalled()
   })
 
-  it('injects content.js and retries for a page opened before extension load', async () => {
+  it.each([false, true])('injects content.js and retries for a missing receiver (sync: %s)', async (syncFailure) => {
     const budget = { maxItems: 80, maxChars: 16_000 }
     const chromeMock = mockChrome({
       tab: { id: 7, url: 'https://example.com/already-open' },
       responses: [new Error('Could not establish connection. Receiving end does not exist.'), OK],
     })
+
+    if (syncFailure) {
+      chromeMock.sendMessage.mockImplementationOnce(() => {
+        throw new Error('Could not establish connection. Receiving end does not exist.')
+      })
+      // The synchronous mock does not consume the queued missing-receiver error.
+      chromeMock.sendMessage.mockResolvedValueOnce(OK)
+    }
 
     const answer = await dispatchToolCall(CALL, 'auto', budget)
     expect(answer.ok).toBe(true)
@@ -155,6 +163,66 @@ describe('dispatchToolCall', () => {
       args: { delta: false },
       budget,
     }, { documentId: 'document-7' })
+  })
+
+  it.each([false, true])('reports safe retry when argument construction throws before sending (recovered: %s)', async (recovered) => {
+    const chromeMock = mockChrome({
+      tab: { id: 7, url: 'https://example.com/form' },
+      responses: [new Error('Could not establish connection. Receiving end does not exist.')],
+    })
+    const args = {
+      get key(): string {
+        if (!recovered || chromeMock.executeScript.mock.calls.length > 0) {
+          throw new TypeError('Action argument could not be read')
+        }
+        return 'Enter'
+      },
+    }
+    const commitAction = vi.fn()
+    const rollbackActionCommit = vi.fn()
+    const answer = await dispatchToolCall(
+      { id: 'argument-read-failed', name: 'management.tabs.press', args },
+      'auto', undefined, undefined, undefined, undefined, undefined,
+      { unrestrictedAccess: true, commitAction, rollbackActionCommit },
+    )
+    expect(answer).toMatchObject({
+      ok: false,
+      error: { code: 'content-unavailable', message: expect.stringContaining('not dispatched') },
+    })
+    expect(answer.error?.message).toContain('safe to retry')
+    expect(answer.error?.message).not.toContain('effect is unknown')
+    expect(commitAction).toHaveBeenCalledTimes(recovered ? 2 : 1)
+    expect(rollbackActionCommit).toHaveBeenCalledTimes(recovered ? 2 : 1)
+    expect(chromeMock.sendMessage).toHaveBeenCalledTimes(recovered ? 1 : 0)
+    expect(chromeMock.executeScript).toHaveBeenCalledTimes(recovered ? 1 : 0)
+  })
+
+  it.each([false, true])('distinguishes synchronous send failure from promise rejection (async: %s)', async (asyncFailure) => {
+    const chromeMock = mockChrome({ tab: { id: 7, url: 'https://example.com/form' } })
+    const error = new TypeError('Action argument could not be read')
+    chromeMock.sendMessage.mockImplementationOnce(() => {
+      if (asyncFailure) return Promise.reject(error)
+      throw error
+    })
+    const commitAction = vi.fn()
+    const rollbackActionCommit = vi.fn()
+    const answer = await dispatchToolCall(
+      { id: 'send-boundary-failed', name: 'management.tabs.press', args: { key: 'Enter' } },
+      'auto', undefined, undefined, undefined, undefined, undefined,
+      { unrestrictedAccess: true, commitAction, rollbackActionCommit },
+    )
+    expect(answer).toMatchObject({
+      ok: false,
+      error: {
+        code: 'content-unavailable',
+        message: expect.stringContaining(asyncFailure ? 'effect is unknown' : 'not dispatched'),
+      },
+    })
+    expect(answer.error?.message.includes('safe to retry')).toBe(!asyncFailure)
+    expect(commitAction).toHaveBeenCalledOnce()
+    expect(rollbackActionCommit).toHaveBeenCalledTimes(asyncFailure ? 0 : 1)
+    expect(chromeMock.sendMessage).toHaveBeenCalledOnce()
+    expect(chromeMock.executeScript).not.toHaveBeenCalled()
   })
 
   it('does not retry or roll back a dispatched action when its response port closes', async () => {

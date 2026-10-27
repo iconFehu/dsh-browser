@@ -150,6 +150,8 @@ async function injectContentScript(tabId: number): Promise<void> {
   }
 }
 
+class ActionNotDispatchedError extends Error {}
+
 async function sendAction(
   tabId: number,
   call: ToolCall,
@@ -157,13 +159,21 @@ async function sendAction(
   budget?: ContentBudget,
   includePageDelta: boolean = false,
 ): Promise<unknown> {
-  return chrome.tabs.sendMessage(tabId, {
-    type: 'DSH_ACTION',
-    action: call.name,
-    args: withoutFrame(call.args),
-    ...budget === undefined ? {} : { budget },
-    ...includePageDelta ? { includePageDelta: true } : {},
-  }, frame.documentId === undefined ? { frameId: frame.frameId } : { documentId: frame.documentId })
+  try {
+    // Catch only synchronous construction/API invocation errors, before a send
+    // is accepted. Do not await here: a response-port rejection cannot prove
+    // non-delivery and must retain the unknown-outcome policy.
+    return chrome.tabs.sendMessage(tabId, {
+      type: 'DSH_ACTION',
+      action: call.name,
+      args: withoutFrame(call.args),
+      ...budget === undefined ? {} : { budget },
+      ...includePageDelta ? { includePageDelta: true } : {},
+    }, frame.documentId === undefined ? { frameId: frame.frameId } : { documentId: frame.documentId })
+  } catch (error: unknown) {
+    if (contentScriptReceiverMissing(error)) throw error
+    throw new ActionNotDispatchedError('The action could not be sent.', { cause: error })
+  }
 }
 
 function contentScriptReceiverMissing(error: unknown): boolean {
@@ -480,7 +490,7 @@ async function dispatchOnce(
       requestPageDelta,
     )
   } catch (error: unknown) {
-    if (stateChanging && contentScriptReceiverMissing(error)) rollbackActionCommit?.()
+    if (stateChanging && (error instanceof ActionNotDispatchedError || contentScriptReceiverMissing(error))) rollbackActionCommit?.()
     navigationWait?.cancel()
     throw error
   }
@@ -831,7 +841,7 @@ export async function dispatchToolCall(
   } catch (error: unknown) {
     if (isCancelled(call, signal)) return cancelled()
     if (!contentScriptReceiverMissing(error)) {
-      return unavailable(interruptedActionMessage(call, true))
+      return unavailable(interruptedActionMessage(call, !(error instanceof ActionNotDispatchedError)))
     }
     // Manifest content scripts do not run retroactively in tabs that were
     // already open when an unpacked extension was installed or reloaded.
@@ -872,7 +882,7 @@ export async function dispatchToolCall(
         tabManagement.rollbackActionCommit,
       )
     } catch (error: unknown) {
-      return unavailable(interruptedActionMessage(call, recoveryDispatchStarted && !contentScriptReceiverMissing(error)))
+      return unavailable(interruptedActionMessage(call, recoveryDispatchStarted && !(error instanceof ActionNotDispatchedError) && !contentScriptReceiverMissing(error)))
     }
   }
 }
