@@ -529,3 +529,11 @@ export function resetCapabilityState(): void {
   inventories.clear()
   viewportOverrides.clear()
 }
+
+/** Clear document and emulation state when this tab's debugger ownership is released. */
+export function clearTabCapabilityState(tabId: number): void {
+  viewportOverrides.delete(tabId)
+  for (const [key, inventory] of inventories) {
+    if (inventory.tabId === tabId) inventories.delete(key)
+  }
+}

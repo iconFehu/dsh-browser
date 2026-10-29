@@ -89,22 +89,26 @@ describe('CdpManager lifecycle', () => {
     const { cdp, fake } = attachedManager()
     await cdp.attach(7)
     cdp.setPanelActive(false)
+    await cdp.detach()
     expect(fake.detached).toEqual([{ tabId: 7 }])
     expect(cdp.isAttached()).toBe(false)
 
     cdp.setPanelActive(true)
     await cdp.attach(7)
     cdp.setDeveloperMode(false)
+    await cdp.detach()
     expect(fake.detached.length).toBe(2)
     expect(cdp.isAttached()).toBe(false)
   })
 
-  it('switching tabs detaches the previous target', async () => {
+  it('retains simultaneous attachments and refuses an ambiguous default target', async () => {
     const { cdp, fake } = attachedManager()
     await cdp.attach(7)
     await cdp.attach(9)
-    expect(fake.detached).toEqual([{ tabId: 7 }])
-    expect(cdp.attachedTab()).toBe(9)
+    expect(fake.detached).toEqual([])
+    expect(cdp.attachedTabs()).toEqual([7, 9])
+    expect(cdp.attachedTab()).toBeUndefined()
+    await expect(cdp.send('Runtime.evaluate')).rejects.toMatchObject({ reason: 'retracted' })
   })
 
   it('retracts explicitly', async () => {

@@ -142,6 +142,63 @@ afterEach(() => {
 })
 
 describe('background bridge lifecycle', () => {
+  it('routes turn end cleanup through the bridge without releasing another session', async () => {
+    const chromeMock = mockChrome({
+      localGet: async () => ({ dshSettings: { bridgeUrl: 'wss://bridge.example/ext/bridge', cdpEnabled: true } }),
+    })
+    const attach = vi.fn((_target: unknown, _version: string, callback: () => void) => callback())
+    const detach = vi.fn((_target: unknown, callback: () => void) => callback())
+    Object.assign(chrome, { debugger: {
+      attach,
+      detach,
+      sendCommand: vi.fn((_target: unknown, _method: string, _params: unknown, callback: (value: unknown) => void) => callback({})),
+      onEvent: chromeEvent<[chrome.debugger.Debuggee, string, unknown]>(),
+      onDetach: chromeEvent<[chrome.debugger.Debuggee]>(),
+    } })
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    await import('../src/background/index.ts')
+    const panel = panelPort()
+    chromeMock.onConnect.emit(panel.port)
+    await vi.waitFor(() => { expect(FakeWebSocket.instances).toHaveLength(1) })
+    const socket = FakeWebSocket.instances[0]!
+    socket.open()
+    await Promise.resolve()
+    socket.receive({ t: 'hello.ok', caps: { textOnly: true, snapshotMaxChars: 32_000, maxInteractiveItems: 60 } })
+
+    const { cdpObservation } = await import('../src/background/cdp/instance.ts')
+    cdpObservation.setDeveloperMode(true)
+    for (const sessionId of ['a', 'b']) {
+      socket.receive({ t: 'capability.call', id: `bind-${sessionId}`, capability: 'management', method: 'tabs.bind',
+        args: { ref: 'tab-v1-1-1' }, sessionId, expiresAt: Date.now() + 10_000 })
+      await vi.waitFor(() => {
+        expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: `bind-${sessionId}`, ok: true }))
+      })
+      socket.receive({ t: 'event', frame: { rpcId: sessionId, method: 'session/event', payload: { sessionId, event: { type: 'turn/start' } } } })
+      // Ordinary session-scoped calls capture the same turn used by CDP calls.
+      socket.receive({ t: 'capability.call', id: `call-${sessionId}`, capability: 'cdp', method: 'call',
+        args: { method: 'Runtime.evaluate', params: { expression: '1' } }, sessionId, expiresAt: Date.now() + 10_000 })
+    }
+    await vi.waitFor(() => {
+      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'call-a', ok: true }))
+      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'call-b', ok: true }))
+    })
+    expect(attach).toHaveBeenCalledTimes(1)
+    socket.receive({ t: 'event', frame: { rpcId: 'end-a', method: 'session/event', payload: { sessionId: 'a', event: { type: 'turn/end' } } } })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(detach).not.toHaveBeenCalled()
+    expect(cdpObservation.isAttached(1)).toBe(true)
+    socket.receive({ t: 'event', frame: { rpcId: 'end-b', method: 'session/event', payload: { sessionId: 'b', event: { type: 'turn/end' } } } })
+    await vi.waitFor(() => { expect(detach).toHaveBeenCalledWith({ tabId: 1 }, expect.any(Function)) })
+    expect(cdpObservation.attachedTabs()).toEqual([])
+    socket.receive({ t: 'capability.call', id: 'late', capability: 'cdp', method: 'call',
+      args: { method: 'Runtime.evaluate' }, sessionId: 'a', expiresAt: Date.now() + 10_000 })
+    await vi.waitFor(() => {
+      expect(socket.sent).toContainEqual(expect.objectContaining({ t: 'capability.result', id: 'late', ok: false }))
+    })
+    expect(attach).toHaveBeenCalledTimes(1)
+    panel.onDisconnect.emit()
+  })
+
   it('does not probe, connect, or arm keepalive just because the extension loads', async () => {
     const chromeMock = mockChrome()
     const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify({

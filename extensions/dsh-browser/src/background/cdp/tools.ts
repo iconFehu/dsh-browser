@@ -22,7 +22,7 @@ import { listTabFrames } from '../frames.ts'
 import { wrapUntrustedContent } from '../../security/untrusted.ts'
 import { NETWORK_BODY_CHARS, renderDiagnostics, renderNetwork, redactUrl } from './buffers.ts'
 import { renderMetrics } from './metrics.ts'
-import { CdpUnavailableError, type CdpManager } from './manager.ts'
+import { CdpUnavailableError, type CdpSession } from './manager.ts'
 import type { ApprovalAuthorization, ApprovalPrompt } from '../../security/approval.ts'
 import {
   DENIED_CDP_METHODS,
@@ -113,7 +113,7 @@ export function cdpCallParams(call: ToolCall): Record<string, unknown> {
 }
 
 export interface CdpObservationDeps {
-  manager: CdpManager
+  manager: CdpSession
   tab: { id?: number; url?: string; windowId: number }
   sharePageContent: 'ask' | 'auto' | 'off'
   authorize: (prompt: ApprovalPrompt) => Promise<ApprovalAuthorization>
@@ -339,7 +339,7 @@ async function exportCapture(deps: CdpObservationDeps, tool: 'cdp.captureScreens
 }
 
 /** Deep text read across every observed frame (open shadow DOM included). */
-async function readDomDeep(manager: CdpManager): Promise<string> {
+async function readDomDeep(manager: CdpSession): Promise<string> {
   const contexts = [...manager.executionContexts()].sort((a, b) => a.contextId - b.contextId)
   if (contexts.length === 0) {
     return 'CDP is attached but no page execution context has been observed yet. Retry once the page settles.'
@@ -378,7 +378,7 @@ function clipText(text: string, max: number): string {
 
 
 export interface CdpDebuggerDeps {
-  manager: CdpManager
+  manager: CdpSession
   tab: { id?: number; url?: string; windowId: number }
   sessionId: string | undefined
   authorize: (prompt: ApprovalPrompt) => Promise<ApprovalAuthorization>

@@ -80,6 +80,7 @@ import { parsePageSelection, parseSelectionCapture } from '../selection.ts'
 import { ApprovalCoordinator, type ApprovalRequestResult } from './approval-coordinator.ts'
 import { API_TOOL_NAMES, dispatchApiTool } from './api-tools.ts'
 import { cdpObservation } from './cdp/instance.ts'
+import { BrowserTurnLifecycle, type BrowserTurn } from './browser-turns.ts'
 import {
   CDP_DEBUGGER_GATE_TOOLS,
   CDP_DEVELOPER_MODE_HINT,
@@ -94,6 +95,7 @@ import {
   BROWSER_CAPABILITY_TOOL_NAMES,
   TAB_CAPABILITY_TOOL_NAMES,
   dispatchCapabilityTool,
+  clearTabCapabilityState,
   type BotDetectionReason,
   type CapabilityDeps,
 } from './capability-tools.ts'
@@ -209,6 +211,7 @@ const pageSessionContexts = new PageSessionContextTracker({
 void chrome.storage.session.remove(LEGACY_RECENT_SESSION_STORAGE_KEY).catch(() => {})
 /** Tool calls that are either withdrawable or completing an already-dispatched action. */
 interface ActiveToolCall {
+  turn: BrowserTurn
   controller: AbortController
   unrestrictedAccess: boolean
   committed: boolean
@@ -225,6 +228,7 @@ let affinityPersistence = Promise.resolve()
 /** Per-session snapshot refreshes preserve prompt ordering without cross-session cancellation. */
 const sessionSnapshotRefreshes = new Map<string, Promise<void>>()
 interface ActiveFollowRefresh {
+  turn: BrowserTurn
   controller: AbortController
   unrestrictedAccess: boolean
   settled: Promise<void>
@@ -232,6 +236,23 @@ interface ActiveFollowRefresh {
 }
 
 const activeFollowRefreshes = new Map<string, ActiveFollowRefresh>()
+const browserTurns = new BrowserTurnLifecycle(cdpObservation, async (turn) => {
+  const calls = [...unsettledToolCalls].filter((call) => call.turn === turn)
+  for (const call of calls) {
+    call.revocationRequested = true
+    if (!call.committed) call.controller.abort()
+  }
+  const refresh = turn.sessionId === undefined ? undefined : activeFollowRefreshes.get(turn.sessionId)
+  if (refresh?.turn === turn) refresh.controller.abort()
+  // Cancellation is scoped to the ending session, never to a newly started generation.
+  if (turn.sessionId !== undefined) cancelPendingApprovals(turn.sessionId)
+  await Promise.allSettled(calls.filter((call) => call.committed).map((call) => call.settled))
+})
+cdpObservation.addDetachHandler((tabId) => {
+  clearTabCapabilityState(tabId)
+  resetTabSnapshot(tabId)
+})
+
 const TAB_AFFINITY_REBIND_TIMEOUT_MS = 10_000
 
 class TabAffinityRebindError extends Error {
@@ -1006,11 +1027,13 @@ async function refreshFollowedPage(sessionId: string, tabId: number): Promise<vo
   const unrestrictedAccess = unrestrictedAccessEnabled()
   let settle!: () => void
   const activeRefresh: ActiveFollowRefresh = {
+    turn: browserTurns.current(sessionId),
     controller,
     unrestrictedAccess,
     settled: new Promise<void>((resolve) => { settle = resolve }),
     settle: () => { settle() },
   }
+  if (activeRefresh.turn.signal.aborted) controller.abort()
   activeFollowRefreshes.set(sessionId, activeRefresh)
   try {
     const target = await resolveToolTab(sessionId)
@@ -1189,12 +1212,14 @@ function dispatchCdpCall(
   sharePageContent: Settings['sharePageContent'],
   signal: AbortSignal,
   unrestrictedAccess: boolean,
+  turn: BrowserTurn,
 ): Promise<ToolAnswer> {
+  const manager = target.id === undefined ? cdpObservation : cdpObservation.forTab(target.id, turn.signal)
   const wireName = normalizeCdpWireName(call.name)
   const authorize = (prompt: ApprovalPrompt) => authorizeToolCall(prompt, signal, target.windowId, call.sessionId, unrestrictedAccess)
   if (CDP_DEBUGGER_GATE_TOOLS.has(wireName)) {
     return dispatchCdpDebuggerGate({ ...call, name: wireName }, {
-      manager: cdpObservation,
+      manager,
       tab: target,
       sessionId: call.sessionId,
       authorize,
@@ -1204,7 +1229,7 @@ function dispatchCdpCall(
   const observation = resolveCdpCall(call)
   if (observation !== undefined && CDP_OBSERVATION_TOOLS.has(observation.name)) {
     return dispatchCdpObservation(observation, {
-      manager: cdpObservation,
+      manager,
       tab: target,
       sharePageContent,
       authorize,
@@ -1214,7 +1239,7 @@ function dispatchCdpCall(
   // Non-allowlisted cdp.call: unrestricted when developer mode is on (attach enforces the gate).
   if (wireName === 'cdp.call') {
     return dispatchCdpRawCall(call, {
-      manager: cdpObservation,
+      manager,
       tab: target,
       sessionId: call.sessionId,
       authorize,
@@ -1254,11 +1279,17 @@ function routeToolCall(call: ToolCall): void {
     )
     return
   }
+  const turn = browserTurns.current(call.sessionId)
+  if (turn.signal.aborted) {
+    bridge.send({ t: 'capability.result', id: call.id, ok: false, error: { code: 'bridge-closed', message: 'The browser turn has ended.' } })
+    return
+  }
   activeToolCalls.get(call.id)?.controller.abort()
   const controller = new AbortController()
   const unrestrictedAccess = unrestrictedAccessEnabled()
   let settle!: () => void
   const activeCall: ActiveToolCall = {
+    turn,
     controller,
     unrestrictedAccess,
     committed: false,
@@ -1323,7 +1354,7 @@ function routeToolCall(call: ToolCall): void {
     sharePageContent,
     authorize: (prompt) => authorizeToolCall(prompt, controller.signal, windowId, call.sessionId, unrestrictedAccess),
     handoff: (prompt, timeoutMs) => requestHandoff(prompt, controller.signal, windowId, call.sessionId, timeoutMs),
-    cdp: cdpObservation,
+    cdp: tab?.id === undefined ? cdpObservation : cdpObservation.forTab(tab.id, turn.signal),
     events: browserEvents,
     notifyBotDetection: broadcastBotDetection,
     signal: controller.signal,
@@ -1362,7 +1393,7 @@ function routeToolCall(call: ToolCall): void {
         : TAB_CAPABILITY_TOOL_NAMES.has(call.name)
         ? dispatchCapabilityTool(call, capabilityDeps(target, target.windowId))
         : call.name.startsWith('cdp.')
-        ? dispatchCdpCall(call, target, sharePageContent, controller.signal, unrestrictedAccess)
+        ? dispatchCdpCall(call, target, sharePageContent, controller.signal, unrestrictedAccess, turn)
         : dispatchToolCall(
             call,
             sharePageContent,
@@ -1511,6 +1542,7 @@ async function startBridge(): Promise<void> {
           cancelAllToolCalls()
           interactionResponses.failAll(responseMessages().disconnected)
           transientEvents.clear()
+          browserTurns.reset()
         }
         broadcastStatus()
         if (state === 'stopped') refreshPanelResumeHints()
@@ -1518,6 +1550,7 @@ async function startBridge(): Promise<void> {
       },
       onFrame: (frame) => {
         if (frame.t === 'event') {
+          browserTurns.ingest(frame)
           transientEvents.ingest(frame)
           broadcastEvent(frame)
         }
@@ -1920,8 +1953,8 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
 
 chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
   // A controlled tab that navigates off http(s) can no longer host CDP.
-  if (cdpObservation.attachedTab() === tabId && tab.url !== undefined && !/^https?:\/\//i.test(tab.url)) {
-    void cdpObservation.retract()
+  if (cdpObservation.isAttached(tabId) && tab.url !== undefined && !/^https?:\/\//i.test(tab.url)) {
+    void cdpObservation.retract(tabId)
   }
   void affinityReady.then(() => {
     if (!tabAffinity.tracks(tabId)) return
@@ -1933,7 +1966,7 @@ chrome.tabs.onUpdated.addListener((tabId, _changeInfo, tab) => {
 chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
   void tabRecency.replace(removedTabId, addedTabId)
   // The old document is gone even though Chrome transfers the tab identity.
-  if (cdpObservation.attachedTab() === removedTabId) void cdpObservation.retract()
+  if (cdpObservation.isAttached(removedTabId)) void cdpObservation.retract(removedTabId)
   broadcastSelections(selections.clearTab(removedTabId))
   void pageSessionContexts.ready.then(() => {
     pageSessionContexts.replaceTab(removedTabId, addedTabId)
@@ -1961,7 +1994,7 @@ chrome.tabs.onReplaced.addListener((addedTabId, removedTabId) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void tabRecency.removed(tabId)
-  if (cdpObservation.attachedTab() === tabId) void cdpObservation.retract()
+  if (cdpObservation.isAttached(tabId)) void cdpObservation.retract(tabId)
   broadcastSelections(selections.clearTab(tabId))
   void pageSessionContexts.ready.then(() => {
     pageSessionContexts.removeTab(tabId)
