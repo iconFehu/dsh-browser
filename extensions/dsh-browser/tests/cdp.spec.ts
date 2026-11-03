@@ -120,6 +120,27 @@ describe('CdpManager lifecycle', () => {
 })
 
 describe('CdpManager observations', () => {
+  it('replaces execution contexts on reload without disconnecting or losing network observations', async () => {
+    const { cdp, fake } = attachedManager()
+    await cdp.attach(7)
+    const created = (id: number) => ({ context: { id, origin: 'https://example.com', auxData: { frameId: 'main', isDefault: true } } })
+    fake.emit('Runtime.executionContextCreated', created(1))
+    fake.emit('Network.requestWillBeSent', { requestId: 'r1', request: { url: 'https://example.com' } })
+    fake.emit('Runtime.executionContextsCleared', {})
+    expect(cdp.executionContexts()).toEqual([])
+    fake.emit('Runtime.executionContextCreated', created(2))
+    fake.emit('Runtime.executionContextCreated', created(3))
+    // A late destruction for the previous document must not remove its replacement.
+    fake.emit('Runtime.executionContextDestroyed', { executionContextId: 2 })
+    expect(cdp.executionContexts()).toMatchObject([{ contextId: 3 }])
+    fake.emit('Runtime.executionContextDestroyed', { executionContextId: 3 })
+    expect(cdp.executionContexts()).toEqual([])
+    expect(cdp.isAttached(7)).toBe(true)
+    expect(fake.attached).toHaveLength(1)
+    expect(fake.detached).toEqual([])
+    expect(cdp.network.snapshot()).toHaveLength(1)
+  })
+
   it('collects console errors/warnings but ignores info', async () => {
     const { cdp, fake } = attachedManager()
     await cdp.attach(7)

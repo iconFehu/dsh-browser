@@ -98,9 +98,17 @@ export class CdpManager {
         const created = params as { context: { id: number; origin: string; auxData?: { frameId?: string; isDefault?: boolean } } }
         const frameId = created.context.auxData?.frameId
         if (frameId !== undefined && created.context.auxData?.isDefault !== false) {
-          if (!state.contexts.has(frameId)) {
-            state.contexts.set(frameId, { frameId, contextId: created.context.id, origin: created.context.origin })
-          }
+          state.contexts.set(frameId, { frameId, contextId: created.context.id, origin: created.context.origin })
+        }
+        return
+      }
+      case 'Runtime.executionContextsCleared':
+        state.contexts.clear()
+        return
+      case 'Runtime.executionContextDestroyed': {
+        const { executionContextId } = params as { executionContextId?: number }
+        for (const [frameId, context] of state.contexts) {
+          if (context.contextId === executionContextId) state.contexts.delete(frameId)
         }
         return
       }
@@ -321,12 +329,20 @@ export class CdpManager {
   }
 
   async send(method: string, params?: Record<string, unknown>, tabId = this.attachedTab()): Promise<unknown> {
-    this.state(tabId)
+    const state = this.state(tabId)
     if (tabId === undefined) throw new CdpUnavailableError('retracted', 'CDP detached before the operation could run.')
     try {
       return await this.debuggerLike.sendCommand({ tabId }, method, params)
     } catch (error) {
-      throw new CdpUnavailableError('unavailable', `CDP command ${method} failed (${describeCdpError(error)}).`)
+      const message = describeCdpError(error)
+      // Chrome can report a lost native attachment before onDetach reaches us.
+      // Keeping this state would make every subsequent attach a no-op, while
+      // observation tools continued returning stale network/diagnostic buffers.
+      // Never replay evaluate/Input here; the next tool call can attach afresh.
+      // A late error from an older attachment must not revoke its replacement.
+      const lostAttachment = /^Debugger is not attached to the tab with id: \d+\.?$/i.test(message)
+      if (lostAttachment && this.tabs.get(tabId) === state) await this.detach(tabId, true)
+      throw new CdpUnavailableError('unavailable', `CDP command ${method} failed (${message}).${lostAttachment ? ' The debugger attachment has ended; retry with a new tool call to reattach.' : ''}`)
     }
   }
 

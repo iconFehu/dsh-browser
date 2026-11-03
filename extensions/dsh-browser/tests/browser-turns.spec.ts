@@ -151,6 +151,58 @@ describe('browser turn and debugger ownership', () => {
     expect(() => tab.send('Page.getFrameTree')).toThrow(/ended/)
   })
 
+  it('invalidates a lost native connection and reconnects on the next tool call without replaying input', async () => {
+    const { turns, manager, adapter, event } = setup()
+    const turn = turns.start('a')
+    const tab = manager.forTab(7, turn.signal)
+    await tab.attach(7)
+    event({ tabId: 7 }, 'Network.requestWillBeSent', { requestId: 'old', request: { url: 'https://example.com/old' } })
+    vi.mocked(adapter.sendCommand).mockRejectedValueOnce(new Error('Debugger is not attached to the tab with id: 7.'))
+
+    await expect(tab.send('Input.dispatchMouseEvent', { type: 'mousePressed' })).rejects.toThrow(/not attached/)
+    expect(manager.isAttached(7)).toBe(false)
+    expect(adapter.detach).not.toHaveBeenCalled()
+    expect(vi.mocked(adapter.sendCommand).mock.calls.filter(([, method]) => method === 'Input.dispatchMouseEvent')).toHaveLength(1)
+    expect(() => tab.send('Runtime.evaluate')).toThrow(/ended/)
+
+    const next = manager.forTab(7, turn.signal)
+    await next.attach(7)
+    expect(adapter.attach).toHaveBeenCalledTimes(2)
+    expect(next.network.snapshot()).toEqual([])
+    await expect(next.send('Runtime.evaluate')).resolves.toMatchObject({ target: { tabId: 7 } })
+    await turns.end('a')
+    expect(manager.isAttached(7)).toBe(false)
+  })
+
+  it('does not invalidate a new attachment when an old command reports a lost connection late', async () => {
+    const { turns, manager, adapter, detached } = setup()
+    const turn = turns.start('a')
+    const tab = manager.forTab(7, turn.signal)
+    await tab.attach(7)
+    let fail!: (reason: Error) => void
+    vi.mocked(adapter.sendCommand).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+    const command = expect(tab.send('Runtime.evaluate')).rejects.toThrow(/not attached/)
+    detached(7)
+    const next = manager.forTab(7, turn.signal)
+    await next.attach(7)
+    fail(new Error('Debugger is not attached to the tab with id: 7.'))
+    await command
+    expect(manager.isAttached(7)).toBe(true)
+    await expect(next.send('Runtime.evaluate')).resolves.toMatchObject({ target: { tabId: 7 } })
+  })
+
+  it('keeps the attachment for ordinary protocol errors', async () => {
+    const { turns, manager, adapter } = setup()
+    const turn = turns.start('a')
+    const tab = manager.forTab(7, turn.signal)
+    await tab.attach(7)
+    vi.mocked(adapter.sendCommand).mockRejectedValueOnce(new Error('Cannot find context with specified id'))
+    await expect(tab.send('Runtime.evaluate')).rejects.toThrow(/Cannot find context/)
+    expect(manager.isAttached(7)).toBe(true)
+    await expect(tab.send('Page.getFrameTree')).resolves.toMatchObject({ target: { tabId: 7 } })
+    expect(adapter.attach).toHaveBeenCalledTimes(1)
+  })
+
   it('clears every turn on disconnect and permits new work after reset', async () => {
     const { turns, manager } = setup()
     const a = turns.start('a')
