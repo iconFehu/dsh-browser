@@ -208,7 +208,7 @@ describe('management.tabs.upload', () => {
   }
 
   function fakeSessionWith(nodeId: number): { session: CdpSession; setFiles: ReturnType<typeof vi.fn> } {
-    const setFiles = vi.fn(async () => ({}))
+    const setFiles = vi.fn(async (_method?: string, _params?: Record<string, unknown>) => ({}))
     const session = {
       frameExecutionContexts: async () => [{
         frameId: 'F8',

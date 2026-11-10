@@ -149,7 +149,7 @@ function unmarkAction(args: Record<string, unknown>): ActionResult {
   if (typeof marker !== 'string' || marker === '') {
     throw new ActionError('bad-args', 'dsh.unmark requires marker.')
   }
-  document.querySelector(`[data-dsh-upload="${CSS.escape(marker)}"]`)?.removeAttribute('data-dsh-upload')
+  document.querySelector(`[data-dsh-upload="${marker.replace(/[\\"]/g, '\\$&')}"]`)?.removeAttribute('data-dsh-upload')
   return { text: 'unmarked' }
 }
 

@@ -141,7 +141,7 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const cdp = registered.find(({ name }) => name === 'cdp')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
     const pageAssets = registered.find(({ name }) => name === 'pageAssets')!.definition.parameters as { properties: { args: { properties: Record<string, unknown> } } }
-    expect(Object.keys(cdp.properties.args.properties)).toEqual(['method', 'params', 'afterSequence'])
+    expect(Object.keys(cdp.properties.args.properties)).toEqual(['method', 'params', 'frame', 'afterSequence'])
     expect(Object.keys(cdp.properties)).toEqual(['method', 'args'])
     expect(Object.keys(pageAssets.properties.args.properties)).toEqual(['delta', 'region', 'selector', 'frame', 'inventoryId', 'assetIds', 'kinds'])
     expect(Object.keys(pageAssets.properties)).not.toContain('namespace')

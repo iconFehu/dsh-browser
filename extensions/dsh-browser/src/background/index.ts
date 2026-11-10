@@ -1409,7 +1409,18 @@ function routeToolCall(call: ToolCall): void {
             controller.signal,
             target,
             () => target.id !== undefined && tabAffinity.allowsTarget(target.id, call.sessionId),
-            { unrestrictedAccess, commitAction, rollbackActionCommit },
+            {
+              unrestrictedAccess,
+              commitAction,
+              rollbackActionCommit,
+              frameDebugger: {
+                sessionFor: async (tabId, sessionSignal) => {
+                  const session = cdpObservation.forTab(tabId, sessionSignal ?? controller.signal)
+                  await session.attach(tabId)
+                  return session
+                },
+              },
+            },
           ))
   ).then(
     async (answer) => {

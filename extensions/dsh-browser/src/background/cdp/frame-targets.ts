@@ -52,6 +52,11 @@ export async function resolveFrameContext(
   }
 }
 
+/** Escape an attribute value for a CSS selector string (service workers have no CSS.escape). */
+function escapeAttributeValue(value: string): string {
+  return value.replace(/[\\"]/g, '\\$&')
+}
+
 /**
  * Find the DOM node carrying an upload marker across all frame contexts.
  * Returns the owning context so follow-up commands (DOM.setFileInputFiles)
@@ -62,7 +67,8 @@ export async function resolveMarkedNode(
   marker: string,
 ): Promise<{ context: FrameExecutionContext; nodeId: number }> {
   const contexts = await session.frameExecutionContexts()
-  const selector = `[data-dsh-upload="${CSS.escape(marker)}"]`
+  const selector = `[data-dsh-upload="${escapeAttributeValue(marker)}"]`
+  const failures: string[] = []
   for (const context of contexts) {
     try {
       await context.send('DOM.enable')
@@ -71,20 +77,30 @@ export async function resolveMarkedNode(
         contextId: context.contextId,
         returnByValue: false,
       }) as { result?: { objectId?: string }; exceptionDetails?: unknown }
-      if (answer.exceptionDetails !== undefined || answer.result?.objectId === undefined) continue
+      if (answer.exceptionDetails !== undefined || answer.result?.objectId === undefined) {
+        failures.push(`${context.frameId}: no node`)
+        continue
+      }
       const objectId = answer.result.objectId
       try {
+        // DOM.requestNode resolves against the agent's document root; establish
+        // it first (upstream resolveFrameNode does the same).
+        await context.send('DOM.getDocument', { depth: -1, pierce: true }).catch(() => { /* best effort root */ })
         const node = await context.send('DOM.requestNode', { objectId }) as { nodeId?: number }
-        if (node.nodeId === undefined || node.nodeId === 0) continue
+        if (node.nodeId === undefined || node.nodeId === 0) {
+          failures.push(`${context.frameId}: requestNode returned ${JSON.stringify(node)}`)
+          continue
+        }
         return { context, nodeId: node.nodeId }
       } finally {
         await context.send('Runtime.releaseObject', { objectId }).catch(() => { /* release is best effort */ })
       }
-    } catch {
+    } catch (error) {
       // A context may have died between listing and probing; try the next one.
+      failures.push(`${context.frameId}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  throw new CdpUnavailableError('unavailable', 'The marked element is no longer available in any frame context.')
+  throw new CdpUnavailableError('unavailable', `The marked element is no longer available in any frame context (${String(contexts.length)} contexts probed: ${failures.join('; ') || 'none'}).`)
 }
 
 function setDocumentMarker(name: string): void {
