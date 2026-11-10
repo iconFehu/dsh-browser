@@ -132,6 +132,27 @@ function elementOrThrow(ids: ElementIds, index: number): Element {
   return el
 }
 
+/** Background-driven internal action: tag one snapshotted element for CDP node resolution. */
+function markAction(args: Record<string, unknown>, ctx: ActionContext): ActionResult {
+  const { index, marker } = args
+  if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0
+    || typeof marker !== 'string' || marker === '') {
+    throw new ActionError('bad-args', 'dsh.mark requires index and marker.')
+  }
+  elementOrThrow(ctx.ids, index).setAttribute('data-dsh-upload', marker)
+  return { text: 'marked' }
+}
+
+/** Background-driven internal action: clear the upload marker after node resolution. */
+function unmarkAction(args: Record<string, unknown>): ActionResult {
+  const marker = args.marker
+  if (typeof marker !== 'string' || marker === '') {
+    throw new ActionError('bad-args', 'dsh.unmark requires marker.')
+  }
+  document.querySelector(`[data-dsh-upload="${CSS.escape(marker)}"]`)?.removeAttribute('data-dsh-upload')
+  return { text: 'unmarked' }
+}
+
 /** Error carrying a stable wire code. */
 export class ActionError extends Error {
   constructor(
@@ -193,6 +214,10 @@ export async function runAction(action: string, args: Record<string, unknown>, c
       return recentTokenTransfers(args, ctx.budget.maxChars)
     case 'management.tabs.wait':
       return waitAction(args, ctx)
+    case 'dsh.mark':
+      return markAction(args, ctx)
+    case 'dsh.unmark':
+      return unmarkAction(args)
     default:
       throw new ActionError('bad-args', `Unknown action: ${action}`)
   }

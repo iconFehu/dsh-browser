@@ -23,6 +23,7 @@ const STATE_CHANGING_ACTIONS = new Set([
   'management.tabs.click',
   'management.tabs.type',
   'management.tabs.press',
+  'management.tabs.upload',
   'management.tabs.navigate',
   'management.tabs.open',
   'management.tabs.back',
@@ -139,6 +140,14 @@ function summarizeAction(call: ToolCall, locale: UiLocale): string {
       `Press “${safeInline(typeof call.args.key === 'string' ? call.args.key : '')}”${frame}`,
       `发送按键「${safeInline(typeof call.args.key === 'string' ? call.args.key : '')}」${frame}`,
     )
+    case 'management.tabs.upload': {
+      const count = Array.isArray(call.args.paths) ? call.args.paths.length : 0
+      return localized(
+        locale,
+        `Set ${count} local file(s) into element [${index}]${frame}`,
+        `向元素 [${index}]${frame} 设置 ${count} 个本地文件`,
+      )
+    }
     case 'management.tabs.navigate': return localized(
       locale,
       `Navigate to ${displayUrl(typeof call.args.url === 'string' ? call.args.url : '', locale)}`,

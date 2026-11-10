@@ -24,6 +24,21 @@ import { NETWORK_BODY_CHARS, NETWORK_LIMIT, RingBuffer } from './buffers.ts'
 
 export interface DebuggeeTarget {
   tabId: number
+  /** Flatten child-session id (out-of-process iframes); undefined is the page session itself. */
+  sessionId?: string
+}
+
+/** One frame document's default execution context, routable to its owning session. */
+export interface FrameExecutionContext {
+  /** Chrome frameId (auxData) of the document this context evaluates. */
+  frameId: string
+  /** Stable cross-navigation Runtime context identity. */
+  uniqueId: string
+  /** Session-scoped numeric context id for Runtime.evaluate. */
+  contextId: number
+  origin: string
+  /** Send a CDP command to the session that owns this context. */
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>
 }
 
 export interface DebuggerLike {
@@ -68,6 +83,10 @@ function describeCdpError(error: unknown): string {
 interface TabState {
   owners: Set<AbortSignal | undefined>
   contexts: Map<string, CdpExecutionContext>
+  /** Every session's default frame contexts (top page plus flatten iframe children). */
+  frameContexts: Map<string, FrameExecutionContext>
+  childSessions: Map<string, Promise<void>>
+  frameAutoAttach: Promise<void> | undefined
   diagnostics: RingBuffer<PageDiagnostic>
   network: RingBuffer<NetworkObservation>
   metricBaseline: MetricSample[]
@@ -77,7 +96,7 @@ interface TabState {
 
 /** Target-bound surface passed to tool executors. */
 export type CdpSession = Pick<CdpManager, 'available' | 'developerModeEnabled' | 'diagnostics' | 'network'
-  | 'attach' | 'attachedTab' | 'send' | 'executionContexts' | 'evaluate' | 'fetchResponseBody' | 'performanceDelta'>
+  | 'attach' | 'attachedTab' | 'send' | 'executionContexts' | 'frameExecutionContexts' | 'evaluate' | 'fetchResponseBody' | 'performanceDelta'>
 
 /** Keeps execution contexts, observations and performance baselines isolated per tab. */
 export class CdpManager {
@@ -93,22 +112,69 @@ export class CdpManager {
   private readonly onEvent = (source: DebuggeeTarget, method: string, params: unknown): void => {
     const state = this.tabs.get(source.tabId)
     if (state === undefined) return
+    const sessionPrefix = `${source.sessionId ?? ''}:`
     switch (method) {
       case 'Runtime.executionContextCreated': {
-        const created = params as { context: { id: number; origin: string; auxData?: { frameId?: string; isDefault?: boolean } } }
+        const created = params as { context: { id: number; origin: string; uniqueId?: string; auxData?: { frameId?: string; isDefault?: boolean } } }
         const frameId = created.context.auxData?.frameId
         if (frameId !== undefined && created.context.auxData?.isDefault !== false) {
-          state.contexts.set(frameId, { frameId, contextId: created.context.id, origin: created.context.origin })
+          // Observation evaluate stays on the page session; child-session
+          // contexts are only reachable through their own session routing.
+          if (source.sessionId === undefined) {
+            state.contexts.set(frameId, { frameId, contextId: created.context.id, origin: created.context.origin })
+          }
+          if (typeof created.context.uniqueId === 'string') {
+            state.frameContexts.set(`${sessionPrefix}${created.context.id}`, {
+              frameId,
+              uniqueId: created.context.uniqueId,
+              contextId: created.context.id,
+              origin: created.context.origin,
+              send: (name, commandParams) => this.debuggerLike.sendCommand(
+                source.sessionId === undefined ? { tabId: source.tabId } : { tabId: source.tabId, sessionId: source.sessionId },
+                name,
+                commandParams,
+              ),
+            })
+          }
         }
         return
       }
       case 'Runtime.executionContextsCleared':
         state.contexts.clear()
+        for (const key of [...state.frameContexts.keys()]) {
+          if (key.startsWith(sessionPrefix)) state.frameContexts.delete(key)
+        }
         return
       case 'Runtime.executionContextDestroyed': {
         const { executionContextId } = params as { executionContextId?: number }
         for (const [frameId, context] of state.contexts) {
           if (context.contextId === executionContextId) state.contexts.delete(frameId)
+        }
+        state.frameContexts.delete(`${sessionPrefix}${executionContextId}`)
+        return
+      }
+      case 'Target.attachedToTarget': {
+        // Flatten auto-attach (iframes only, per the setAutoAttach filter):
+        // enable Runtime on the child, then recurse so nested OOP frames attach too.
+        const { sessionId } = params as { sessionId?: string }
+        if (typeof sessionId !== 'string' || state.childSessions.has(sessionId)) return
+        const childTarget: DebuggeeTarget = { tabId: source.tabId, sessionId }
+        const ready = this.debuggerLike.sendCommand(childTarget, 'Runtime.enable')
+          .then(async () => {
+            await this.debuggerLike.sendCommand(childTarget, 'Target.setAutoAttach', {
+              autoAttach: true, waitForDebuggerOnStart: false, flatten: true,
+              filter: [{ type: 'iframe', exclude: false }],
+            })
+          })
+        state.childSessions.set(sessionId, ready)
+        return
+      }
+      case 'Target.detachedFromTarget': {
+        const { sessionId } = params as { sessionId?: string }
+        if (typeof sessionId !== 'string') return
+        state.childSessions.delete(sessionId)
+        for (const key of [...state.frameContexts.keys()]) {
+          if (key.startsWith(`${sessionId}:`)) state.frameContexts.delete(key)
         }
         return
       }
@@ -217,6 +283,27 @@ export class CdpManager {
   get network(): RingBuffer<NetworkObservation> { return this.state().network }
   executionContexts(tabId?: number): CdpExecutionContext[] { return [...this.state(tabId).contexts.values()] }
 
+  /**
+   * All frames' default execution contexts, including out-of-process iframes
+   * reached through flatten child sessions. Attaches lazily: the first call
+   * turns on Target.setAutoAttach (iframes only) and waits for the child
+   * sessions to settle before returning.
+   */
+  async frameExecutionContexts(tabId = this.attachedTab()): Promise<FrameExecutionContext[]> {
+    const state = this.state(tabId)
+    state.frameAutoAttach ??= this.send('Target.setAutoAttach', {
+      autoAttach: true, waitForDebuggerOnStart: false, flatten: true,
+      filter: [{ type: 'iframe', exclude: false }],
+    }, tabId).then(() => undefined)
+    await state.frameAutoAttach
+    let count = -1
+    while (count !== state.childSessions.size) {
+      count = state.childSessions.size
+      await Promise.all(state.childSessions.values())
+    }
+    return [...state.frameContexts.values()]
+  }
+
   /** Bind every operation, including reads after awaits, to one target and owner. */
   forTab(tabId: number, owner?: AbortSignal): CdpSession {
     let attachedState: TabState | undefined
@@ -241,6 +328,7 @@ export class CdpManager {
       attachedTab: () => owner?.aborted ? undefined : manager.isAttached(tabId) ? tabId : undefined,
       send: (method, params) => { check(); return manager.send(method, params, tabId) },
       executionContexts: () => { check(); return manager.executionContexts(tabId) },
+      frameExecutionContexts: () => { check(); return manager.frameExecutionContexts(tabId) },
       evaluate: (context, expression) => { check(); return manager.evaluate(context, expression, tabId) },
       fetchResponseBody: (requestId) => { check(); return manager.fetchResponseBody(requestId, tabId) },
       performanceDelta: () => { check(); return manager.performanceDelta(tabId) },
@@ -255,7 +343,9 @@ export class CdpManager {
     let state = this.tabs.get(tabId)
     if (state === undefined) {
       state = {
-        owners: new Set(), contexts: new Map(), diagnostics: new RingBuffer(64),
+        owners: new Set(), contexts: new Map(), frameContexts: new Map(),
+        childSessions: new Map(), frameAutoAttach: undefined,
+        diagnostics: new RingBuffer(64),
         network: new RingBuffer(NETWORK_LIMIT), metricBaseline: [], attached: false,
         ready: Promise.resolve(),
       }
@@ -313,6 +403,9 @@ export class CdpManager {
     if (state === undefined) { await this.detaching.get(tabId); return }
     this.tabs.delete(tabId)
     state.contexts.clear()
+    state.frameContexts.clear()
+    state.childSessions.clear()
+    state.frameAutoAttach = undefined
     state.network.clear()
     state.diagnostics.clear()
     state.metricBaseline = []
@@ -398,11 +491,11 @@ export function adaptChromeDebugger(): { adapter: DebuggerLike | null; available
   const api = debuggerApi as {
     attach(target: { tabId?: number }, version: string, callback: () => void): void
     detach(target: { tabId?: number }, callback: () => void): void
-    sendCommand(target: { tabId?: number }, method: string, params: unknown, callback: (result: unknown) => void): void
+    sendCommand(target: { tabId?: number; sessionId?: string }, method: string, params: unknown, callback: (result: unknown) => void): void
     onDetach?: { addListener(callback: (source: { tabId?: number }) => void): void }
     onEvent: {
-      addListener(callback: (source: { tabId?: number }, method: string, params: unknown) => void): void
-      removeListener(callback: (source: { tabId?: number }, method: string, params: unknown) => void): void
+      addListener(callback: (source: { tabId?: number; sessionId?: string }, method: string, params: unknown) => void): void
+      removeListener(callback: (source: { tabId?: number; sessionId?: string }, method: string, params: unknown) => void): void
     }
   }
   if (typeof api.attach !== 'function') return { adapter: null, available: false }
@@ -434,8 +527,12 @@ export function adaptChromeDebugger(): { adapter: DebuggerLike | null; available
       })
     }),
     addEventListener: (handler) => {
-      const wrapped = (source: { tabId?: number }, method: string, params: unknown): void => {
-        handler({ tabId: source.tabId ?? -1 }, method, params)
+      const wrapped = (source: { tabId?: number; sessionId?: string }, method: string, params: unknown): void => {
+        handler(
+          { tabId: source.tabId ?? -1, ...(source.sessionId === undefined ? {} : { sessionId: source.sessionId }) },
+          method,
+          params,
+        )
       }
       eventHandlers.set(handler, wrapped)
       api.onEvent.addListener(wrapped)

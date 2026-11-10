@@ -1341,6 +1341,13 @@ function routeToolCall(call: ToolCall): void {
         ...(controlledTabId === undefined ? {} : { controlledTabId }),
         controlledTabIds,
         followTab: (tab) => followModelSelectedTab(tab, call.sessionId),
+        frameDebugger: {
+          sessionFor: async (tabId, sessionSignal) => {
+            const session = cdpObservation.forTab(tabId, sessionSignal ?? controller.signal)
+            await session.attach(tabId)
+            return session
+          },
+        },
         commitAction,
         rollbackActionCommit,
       },

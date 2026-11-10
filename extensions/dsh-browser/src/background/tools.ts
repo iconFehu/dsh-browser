@@ -20,6 +20,8 @@ import {
 import { wrapUntrustedContent } from '../security/untrusted.ts'
 import { approvalPromptForCall, originFromUrl } from './authorization.ts'
 import { waitForNextDocumentReady } from './navigation.ts'
+import { resolveMarkedNode } from './cdp/frame-targets.ts'
+import { CdpUnavailableError, type CdpSession } from './cdp/manager.ts'
 import type { ApprovalAuthorization, ApprovalPrompt } from '../security/approval.ts'
 import { getUiLocale } from '../i18n.ts'
 
@@ -108,6 +110,12 @@ export function isTabManagementTool(name: string): boolean {
   return TAB_MANAGEMENT_TOOL_NAMES.has(name)
 }
 
+/** CDP-backed frame services injected by the background entry point (Chrome only). */
+export interface FrameDebugger {
+  /** Attach (or reuse) the tab's debugger session, enforcing the developer-mode gates. */
+  sessionFor(tabId: number, signal?: AbortSignal): Promise<CdpSession>
+}
+
 /** Tab-affinity services owned by the background entry point. */
 export interface TabManagementContext {
   /** Skip all browser approval prompts after the user enables unrestricted access. */
@@ -117,6 +125,8 @@ export interface TabManagementContext {
   controlledTabIds?: number[]
   /** Rebind subsequent tools to one existing tab without activating it. */
   followTab?: (tab: chrome.tabs.Tab) => void | Promise<void>
+  /** Debugger-backed frame operations (management.tabs.upload); absent outside Chrome. */
+  frameDebugger?: FrameDebugger
   /** Mark the point after which a state-changing operation cannot be withdrawn. */
   commitAction?: () => void
   /** Restore withdrawability when a content-script action was not delivered. */
@@ -215,6 +225,59 @@ function tabMetadataSnapshot(
         `URL: ${url ?? '(unknown)'}`,
       ].join('\n'), remaining)}`,
     },
+  }
+}
+
+/**
+ * Debugger-backed file upload: mark the snapshotted file input in its frame,
+ * resolve the element's DOM node across frame contexts (including
+ * out-of-process iframes), and hand the local file paths to the input through
+ * DOM.setFileInputFiles. Requires Browser developer mode (sessionFor gates it).
+ */
+async function dispatchUploadTool(
+  tabId: number,
+  frame: TabFrame,
+  call: ToolCall,
+  signal: AbortSignal | undefined,
+  frameDebugger: FrameDebugger,
+  tabManagement: TabManagementContext,
+): Promise<ToolAnswer> {
+  const index = call.args.index
+  const paths = call.args.paths
+  if (typeof index !== 'number' || !Number.isSafeInteger(index) || !Array.isArray(paths)) {
+    return { ok: false, error: { code: 'action-failed', message: 'management.tabs.upload requires index and paths.' } }
+  }
+  const marker = crypto.randomUUID()
+  let dispatched = false
+  try {
+    tabManagement.commitAction?.()
+    const marked = await sendAction(tabId, { id: call.id, name: 'dsh.mark', args: { index, marker } }, frame)
+    if (!isToolAnswer(marked) || marked.ok !== true) {
+      return unavailable('The file input could not be marked. Call pageAssets.snapshot again for current indices.')
+    }
+    const session = await frameDebugger.sessionFor(tabId, signal)
+    const node = await resolveMarkedNode(session, marker)
+    dispatched = true
+    await node.context.send('DOM.setFileInputFiles', { files: paths, nodeId: node.nodeId })
+    return {
+      ok: true,
+      result: {
+        text: `Set ${paths.length} file(s) on element [${index}]${frame.frameId === 0 ? '' : ` in frame ${frame.frameId}`}. Read the page state before submitting the form.`,
+      },
+    }
+  } catch (error) {
+    if (!dispatched) tabManagement.rollbackActionCommit?.()
+    if (error instanceof CdpUnavailableError) return unavailable(error.message)
+    if (contentScriptReceiverMissing(error)) {
+      return unavailable('The page frame did not answer the upload preparation. Call pageAssets.snapshot again.')
+    }
+    return unavailable(`management.tabs.upload failed: ${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    try {
+      await sendAction(tabId, { id: call.id, name: 'dsh.unmark', args: { marker } }, frame)
+    } catch {
+      // The frame may have navigated; the one-shot marker died with its document.
+    }
   }
 }
 
@@ -822,6 +885,17 @@ export async function dispatchToolCall(
     const refreshedTargetError = validateElementTarget(call, tab.id, executionFrames)
     if (refreshedTargetError !== undefined) return refreshedTargetError
   }
+  if (call.name === 'management.tabs.upload') {
+    const frameDebugger = tabManagement.frameDebugger
+    if (frameDebugger === undefined) {
+      return unavailable('File upload requires the CDP debugger runtime (Google Chrome).')
+    }
+    const uploadFrame = executionFrames.find((candidate) => candidate.frameId === requestedFrame(call.args))
+    if (uploadFrame === undefined) {
+      return unavailable(`Frame ${requestedFrame(call.args)} does not exist or has navigated. Call pageAssets.snapshot again.`)
+    }
+    return dispatchUploadTool(tab.id, uploadFrame, call, signal, frameDebugger, tabManagement)
+  }
   if (!isInjectablePage(tab.url)) {
     return await dispatchTabNativeTool(tab.id, tab.url, tab.title, tab.windowId, call, effectiveBudget, signal, targetStillAllowed, tabManagement.commitAction)
       ?? unavailable('The current page DOM is protected by the browser.')
@@ -898,7 +972,7 @@ function validateFrameTarget(call: ToolCall, frames: TabFrame[]): ToolAnswer | u
 }
 
 function validateElementTarget(call: ToolCall, tabId: number, frames: TabFrame[]): ToolAnswer | undefined {
-  if (call.name !== 'management.tabs.click' && call.name !== 'management.tabs.type') return undefined
+  if (call.name !== 'management.tabs.click' && call.name !== 'management.tabs.type' && call.name !== 'management.tabs.upload') return undefined
   const frameId = requestedFrame(call.args)
   const frame = frames.find((candidate) => candidate.frameId === frameId)
   const snapshotted = snapshotDocumentsByTab.get(tabId)?.get(frameId)

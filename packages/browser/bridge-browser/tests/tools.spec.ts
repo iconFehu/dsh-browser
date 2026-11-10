@@ -60,8 +60,8 @@ describe('registerBrowserTools', () => {
     registerBrowserTools(ctx, bridge, { toolTimeoutMs: 1000, snapshotMaxChars: 12000, maxInteractiveItems: 60 })
     const parameters = registered.find(({ name }) => name === 'management')!.definition.parameters as { properties: { namespace: { enum: string[] }; method: { enum: string[] }; args: { properties: Record<string, unknown> } } }
     expect(parameters.properties.namespace.enum).toEqual(['windows', 'tabs', 'tabGroups', 'bookmarks', 'history', 'downloads', 'events'])
-    expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'group', 'ungroup', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'create', 'search', 'delete', 'cancel', 'events'])
-    expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'pinned', 'muted', 'autoDiscardable', 'highlighted', 'openerTabId', 'selected', 'index', 'frame', 'text', 'replace', 'key', 'direction', 'amount', 'ms', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
+    expect(parameters.properties.method.enum).toEqual(['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'group', 'ungroup', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'upload', 'create', 'search', 'delete', 'cancel', 'events'])
+    expect(Object.keys(parameters.properties.args.properties)).toEqual(['url', 'tabId', 'tabIds', 'windowId', 'active', 'pinned', 'muted', 'autoDiscardable', 'highlighted', 'openerTabId', 'selected', 'index', 'frame', 'paths', 'text', 'replace', 'key', 'direction', 'amount', 'ms', 'groupId', 'title', 'color', 'collapsed', 'query', 'id', 'parentId', 'startTime', 'endTime', 'maxResults', 'state', 'limit', 'afterSequence', 'waitMs'])
   })
 
   it('validates method-specific management arguments before dispatch', async () => {

@@ -18,7 +18,7 @@ const DESCRIPTIONS: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   browserAuth: 'Hand a sign-in step to the user: describe the fields; the user types credentials directly on the page and they are never shared with you. Returns only a status such as submitted, declined, expired, or origin_changed.',
   cdp: 'Use Chrome DevTools Protocol on the controlled tab. With Browser developer mode ON: observation/capture plus unrestricted debugger methods including Runtime.evaluate and Input.*. With developer mode OFF: CDP unavailable. Prefer pageAssets.snapshot for seeing and operating on pages; Page.captureScreenshot / Page.printToPDF are local-export only (silent save under Downloads/dsh-browser/, not sent to the model). Prefer botDetection for human CAPTCHA challenges.',
   etherscan: 'Optional Etherscan adapter: recentTokenTransfers reads the controlled ERC-20 token page Transfers list locally for a fixed time window (continuation via nextPage/nextRow/windowEndUnix).',
-  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot. tabs.update accepts Chrome tabs.update updateProperties (active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected→highlighted, url); not title/groupId/index. Preferred tab-group flow: tabs.list → tabs.group({tabIds}) → tabGroups.update({groupId,title,color}) → tabs.list to verify groupId; do not create empty groups. Only methods listed in the schema are available.',
+  management: 'Manage browser windows, tabs, tab groups, and bookmarks, and operate the controlled page: tabs.click/type/press/scroll/wait act on numbered targets from pageAssets.snapshot, and tabs.upload({index, paths}) sets local files into a file input (needs Browser developer mode). tabs.update accepts Chrome tabs.update updateProperties (active, autoDiscardable, highlighted, muted, openerTabId, pinned, selected→highlighted, url); not title/groupId/index. Preferred tab-group flow: tabs.list → tabs.group({tabIds}) → tabGroups.update({groupId,title,color}) → tabs.list to verify groupId; do not create empty groups. Only methods listed in the schema are available.',
   pageAssets: 'Read the controlled page: snapshot returns structured text with numbered action targets (call it before tabs.click/type), getText reads plain text; list inventories observed assets, and bundle saves selected ones into the user\'s Downloads folder (you receive file names, never contents).',
   viewport: 'Read, set, or reset a viewport override for responsive testing (Chrome, requires browser developer mode). Reset overrides before finishing unless the user asked to keep them.',
   visibility: 'Read or change whether the browser window is visible to the user.',
@@ -28,7 +28,7 @@ const METHOD_GUIDE: Record<typeof BROWSER_TOOL_NAMES[number], string> = {
   browserAuth: 'Methods: request.',
   cdp: 'Methods: call, events, enableDebugger, disableDebugger, debuggerStatus. Observation call methods: Accessibility.getFullAXTree, DOM.getDocument, DOM.getOuterHTML, Network.enable/disable/getResponseBody, Performance.enable/disable/getMetrics, Page.captureScreenshot, Page.printToPDF (local export only — prefer pageAssets.snapshot to see/operate on pages). With Browser developer mode ON (settings), cdp.call may also use Runtime.evaluate, Input.dispatchMouseEvent/dispatchKeyEvent/insertText, and related Page/Runtime/Input/DOM/Network methods on the controlled http(s) tab — do not call enableDebugger first (it is a no-op). Turn off developer mode in settings to disable debugger powers. Prefer botDetection for human CAPTCHA challenges — do not treat debugger Input/evaluate as the default bypass. For events, omit args.method; use args.afterSequence. Navigation belongs to management.tabs.',
   etherscan: 'Methods: recentTokenTransfers.',
-  management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, group, ungroup, click, type, press, scroll, wait, back, forward; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events. Tab groups: tabs.group({tabIds, groupId?}) puts tabs in a (new or existing) group; tabs.ungroup({tabIds}) removes tabs from groups; tabGroups.ungroup({groupId}) dissolves a group; tabGroups.create requires tabIds (Chrome cannot create empty groups).', 
+  management: 'Namespaces and methods: windows.list; tabs.list, open, navigate, activate, update, reload, close, group, ungroup, click, type, press, scroll, wait, back, forward, upload; tabGroups.list, create, update, ungroup; bookmarks.search, create, update, delete; history.search; downloads.list, cancel; events. Tab groups: tabs.group({tabIds, groupId?}) puts tabs in a (new or existing) group; tabs.ungroup({tabIds}) removes tabs from groups; tabGroups.ungroup({groupId}) dissolves a group; tabGroups.create requires tabIds (Chrome cannot create empty groups).', 
   pageAssets: 'Methods: snapshot, getText, list, bundle (bundle needs the inventoryId from list).',
   viewport: 'Methods: get, set, reset.',
   visibility: 'Methods: get, set.',
@@ -61,7 +61,7 @@ const CDP_SESSION_DEBUGGER_HINT = CDP_DEVELOPER_MODE_HINT
 
 const MANAGEMENT_METHODS: Record<string, readonly string[]> = {
   windows: ['list'],
-  tabs: ['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'group', 'ungroup', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward'],
+  tabs: ['list', 'open', 'navigate', 'activate', 'update', 'reload', 'close', 'group', 'ungroup', 'click', 'type', 'press', 'scroll', 'wait', 'back', 'forward', 'upload'],
   tabGroups: ['list', 'create', 'update', 'ungroup'],
   bookmarks: ['search', 'create', 'update', 'delete'],
   history: ['search'],
@@ -90,8 +90,9 @@ const MANAGEMENT_ARG_SCHEMA = {
     highlighted: { type: 'boolean', description: 'tabs.update only: add/remove the tab from the current selection (Chrome updateProperties.highlighted).' },
     openerTabId: { type: 'number', description: 'tabs.update only: opener tab id in the same window (Chrome updateProperties.openerTabId).' },
     selected: { type: 'boolean', description: 'tabs.update only: deprecated Chrome alias of highlighted; accepted and mapped to highlighted when highlighted is omitted.' },
-    index: { type: 'number', description: 'Element index from the latest pageAssets.snapshot; required by tabs.click and tabs.type. Not a tabs.update field — tab position changes belong to tabs.move.' },
-    frame: { type: 'number', description: 'Iframe number from pageAssets.snapshot; omit for the top page.' },
+    index: { type: 'number', description: 'Element index from the latest pageAssets.snapshot; required by tabs.click, tabs.type, and tabs.upload. Not a tabs.update field — tab position changes belong to tabs.move.' },
+    frame: { type: 'number', description: 'Iframe number from pageAssets.snapshot; omit for the top page. Also accepted by cdp.call to route the command to that frame document.' },
+    paths: { type: 'array', description: 'Absolute local file paths for tabs.upload (a file input element from the latest snapshot). Requires Browser developer mode.', items: { type: 'string' } },
     text: { type: 'string', description: 'Text for tabs.type. Sensitive values are never returned.' },
     replace: { type: 'boolean', description: 'tabs.type: clear the existing value first. Defaults to append.' },
     key: { type: 'string', description: 'tabs.press key using KeyboardEvent.key semantics, such as Enter, Tab, Escape, or ArrowDown.' },
@@ -204,10 +205,13 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
     if (method === 'group' && args.groupId !== undefined && (typeof args.groupId !== 'number' || !Number.isSafeInteger(args.groupId))) {
       throw new Error('management.tabs.group groupId must be a safe integer when provided')
     }
-  } else if (method === 'click' || method === 'type') {
+  } else if (method === 'click' || method === 'type' || method === 'upload') {
     if (typeof args.index !== 'number' || !Number.isSafeInteger(args.index) || args.index < 0) throw new Error(`management.tabs.${method} requires a non-negative integer index from pageAssets.snapshot`)
     if (method === 'type' && typeof args.text !== 'string') throw new Error('management.tabs.type requires text')
     if (method === 'type' && args.replace !== undefined && typeof args.replace !== 'boolean') throw new Error('management.tabs.type replace must be boolean')
+    if (method === 'upload' && (!Array.isArray(args.paths) || args.paths.length === 0 || args.paths.length > 20 || !args.paths.every((path) => typeof path === 'string' && path.length > 0))) {
+      throw new Error('management.tabs.upload requires paths (1-20 non-empty absolute file path strings)')
+    }
   } else if (method === 'press') {
     if (typeof args.key !== 'string' || args.key.length === 0) throw new Error('management.tabs.press requires a key')
   } else if (method === 'scroll') {
@@ -216,7 +220,7 @@ function validateManagementArgs(namespace: string, method: string, args: Record<
   } else if (method === 'wait') {
     if (args.ms !== undefined && (typeof args.ms !== 'number' || !Number.isSafeInteger(args.ms) || args.ms < 0 || args.ms > 30_000)) throw new Error('management.tabs.wait ms must be an integer from 0 to 30000')
   }
-  if (['click', 'type', 'press', 'scroll', 'wait'].includes(method) && args.frame !== undefined
+  if (['click', 'type', 'press', 'scroll', 'wait', 'upload'].includes(method) && args.frame !== undefined
     && (typeof args.frame !== 'number' || !Number.isSafeInteger(args.frame) || args.frame < 0)) throw new Error(`management.tabs.${method} frame must be a non-negative integer`)
 }
 
@@ -228,6 +232,9 @@ function validateCapabilityArgs(capability: string, method: string, args: Record
     }
     if (DENIED_CDP_METHODS.has(args.method)) {
       throw new Error(`cdp.call method ${args.method} is permanently denied`)
+    }
+    if (args.frame !== undefined && (typeof args.frame !== 'number' || !Number.isSafeInteger(args.frame) || args.frame < 0)) {
+      throw new Error('cdp.call frame must be a non-negative integer frameId from pageAssets.snapshot or management.tabs.list')
     }
     // Non-allowlisted methods are accepted here so the extension can enforce
     // developer-mode gating (attach) and return a clear error when it is off.
