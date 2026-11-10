@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
+import { BEACON_PORTS } from '../src/protocol.ts'
 import { apply, assertPositiveInteger, Config, resolveConfig } from '../src/index.ts'
 
 /** Minimal context stub: apply only needs the services at registration time. */
@@ -50,12 +51,14 @@ describe('assertPositiveInteger', () => {
 })
 
 /** Valid budgets (the Loader applies schema defaults; hand-built tests pass them explicitly). */
-const VALID = { toolTimeoutMs: 90_000, snapshotMaxChars: 32_000, maxInteractiveItems: 60 }
+const VALID = { toolTimeoutMs: 90_000, snapshotMaxChars: 32_000, maxInteractiveItems: 60, beacon: false }
 
 describe('config', () => {
   it('resolves defaults, including an enabled workspace under the dsh home', () => {
     expect(resolveConfig({})).toEqual({
       ...VALID,
+      beacon: true,
+      beaconPorts: [...BEACON_PORTS],
       sessionWorkspacePath: dshHomePath('browser-sessions'),
       deferSessionCreate: true,
     })
@@ -70,6 +73,8 @@ describe('config', () => {
       maxInteractiveItems: 3,
       sessionWorkspacePath: '',
       deferSessionCreate: false,
+      beacon: false,
+      beaconPorts: [43200],
     })).toEqual({
       token: 'fixed',
       toolTimeoutMs: 1,
@@ -77,6 +82,8 @@ describe('config', () => {
       maxInteractiveItems: 3,
       sessionWorkspacePath: '',
       deferSessionCreate: false,
+      beacon: false,
+      beaconPorts: [43200],
     })
     expect(new Config({ sessionWorkspacePath: '' }).sessionWorkspacePath).toBe('')
   })

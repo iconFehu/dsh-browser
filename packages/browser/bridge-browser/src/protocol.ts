@@ -18,6 +18,51 @@ export const BRIDGE_PATH = '/ext/bridge'
 /** Zero-config discovery endpoint: returns `{ wsUrl }` for the extension. */
 export const BRIDGE_CONFIG_PATH = '/ext/bridge-config'
 
+/**
+ * Fixed ports the discovery beacon may bind, tried in order. DSH Desktop
+ * launches its host with `--port 0`, so every launch lands on a different
+ * OS-assigned port and no fixed list of real ports can find it. The beacon
+ * binds the first free port of this range and answers
+ * {@link BRIDGE_CONFIG_PATH} with the real bridge URL, which turns discovery
+ * into a handful of bounded probes. 43189 is the port older deployment notes
+ * already recommended pinning by hand.
+ */
+export const BEACON_PORTS = [43189, 43190, 43191, 43192, 43193, 43194, 43195, 43196, 43197, 43198] as const
+
+/** Instance metadata the discovery endpoints advertise. */
+export interface BridgeInstanceInfo {
+  /** Host process id, for telling several local instances apart. */
+  pid?: number
+  /** Host start time as an ISO 8601 string. */
+  startedAt?: string
+}
+
+/** Zero-config discovery response body; the host route and the beacon answer alike. */
+export interface BridgeConfigPayload {
+  /** Bridge WebSocket URL the extension should open. */
+  wsUrl: string
+  /** Set when a fixed-port discovery beacon (not the host route) answered. */
+  beacon?: true
+  /** Host process id, for telling several local instances apart. */
+  pid?: number
+  /** Host start time as an ISO 8601 string. */
+  startedAt?: string
+}
+
+/** Build the discovery response body for a host webserver port. */
+export function bridgeConfigPayload(
+  hostPort: number,
+  info: BridgeInstanceInfo = {},
+  beacon = false,
+): BridgeConfigPayload {
+  return {
+    wsUrl: `ws://127.0.0.1:${String(hostPort)}${BRIDGE_PATH}`,
+    ...(beacon ? { beacon: true as const } : {}),
+    ...(info.pid === undefined ? {} : { pid: info.pid }),
+    ...(info.startedAt === undefined ? {} : { startedAt: info.startedAt }),
+  }
+}
+
 /** Internal RPC used after an explicit tab handoff to seed the Agent's next step. */
 export const BRIDGE_INJECT_BROWSER_SNAPSHOT_METHOD = 'bridge.injectBrowserSnapshot'
 

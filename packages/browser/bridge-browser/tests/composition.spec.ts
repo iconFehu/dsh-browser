@@ -295,12 +295,17 @@ describe('real Loader composition', () => {
     expect(browserPrompt).toContain('pageAssets')
     expect(browserPrompt).not.toMatch(/\p{Script=Han}/u)
 
-    // Zero-config discovery endpoint answers with the bridge WebSocket URL.
+    // Zero-config discovery endpoint answers with the bridge WebSocket URL
+    // plus instance metadata; the fixed-port beacon side is covered by
+    // discovery-beacon.spec.ts.
     const configResponse = await fetch(`http://127.0.0.1:${port}/ext/bridge-config`)
     expect(configResponse.status).toBe(200)
-    const config = await configResponse.json() as { wsUrl?: unknown }
+    const config = await configResponse.json() as { wsUrl?: unknown; beacon?: unknown; pid?: unknown; startedAt?: unknown }
     expect(typeof config.wsUrl).toBe('string')
     expect(config.wsUrl).toBe(`ws://127.0.0.1:${port}/ext/bridge`)
+    expect(config.beacon).toBeUndefined()
+    expect(config.pid).toBe(process.pid)
+    expect(typeof config.startedAt).toBe('string')
     expect(tools.get('management')).toBeDefined()
     expect(tools.get('cdp')).toBeDefined()
 

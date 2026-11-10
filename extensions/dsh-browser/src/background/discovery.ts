@@ -1,8 +1,13 @@
 /** Bounded local discovery. A config response is a candidate, never authentication. */
+import { BEACON_PORTS } from '@yuxianglin/dsh-bridge-browser/src/protocol.ts'
+
 export type DiagnosticCode = 'discovering' | 'not-found' | 'forbidden' | 'missing-bridge' | 'invalid-response' | 'authentication' | 'handshake-timeout' | 'replaced' | 'connected'
-export interface ConnectionDiagnostic { code: DiagnosticCode; address?: string }
+export interface ConnectionDiagnostic { code: DiagnosticCode; address?: string; pid?: number }
 export const DESKTOP_PORTS = Array.from({ length: 33 }, (_, i) => 43120 + i)
-const FALLBACK_PORTS = [14389, 43189, 3080, 3081, 3090]
+// DSH Desktop launches its host with --port 0, so a random-port instance is
+// only reachable through the bridge's fixed-port discovery beacon; the rest of
+// the list covers pinned deployments and older releases.
+const FALLBACK_PORTS = [14389, ...BEACON_PORTS, 3080, 3081, 3090]
 
 export function safeAddress(value: string): string | undefined {
   try {
@@ -39,8 +44,19 @@ export async function inspectBridge(address: string, request: typeof fetch = fet
     if (!response.ok) return { code: 'invalid-response', address: display }
     let body: unknown
     try { body = await response.json() } catch { return { code: 'invalid-response', address: display } }
-    const url = localCandidate(typeof body === 'object' && body !== null ? (body as { wsUrl?: unknown }).wsUrl : undefined, target.port)
-    return url ? { code: 'connected', address: url } : { code: 'invalid-response', address: display }
+    if (typeof body !== 'object' || body === null) return { code: 'invalid-response', address: display }
+    const payload = body as { wsUrl?: unknown; beacon?: unknown; pid?: unknown }
+    // A beacon answer reports the real host port, which differs from the
+    // beacon port that was probed; a direct host answer must match its port.
+    const url = payload.beacon === true
+      ? localCandidate(payload.wsUrl)
+      : localCandidate(payload.wsUrl, target.port)
+    if (!url) return { code: 'invalid-response', address: display }
+    return {
+      code: 'connected',
+      address: url,
+      ...(typeof payload.pid === 'number' && Number.isInteger(payload.pid) && payload.pid > 0 ? { pid: payload.pid } : {}),
+    }
   } catch { return { code: 'not-found', address: display } }
 }
 

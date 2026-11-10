@@ -55,4 +55,28 @@ describe('Desktop discovery', () => {
     expect(request.mock.calls.length).toBe(4)
     expect(safeAddress('ws://user:secret@127.0.0.1:43120/ext/bridge?token=secret#secret')).toBe('ws://127.0.0.1:43120/ext/bridge')
   })
+  it('accepts a beacon answer whose wsUrl reports the real random host port', async () => {
+    const beaconAnswer = new Response(JSON.stringify({
+      wsUrl: 'ws://127.0.0.1:51801/ext/bridge', beacon: true, pid: 4242, startedAt: '2026-11-11T00:00:00.000Z',
+    }))
+    const request = vi.fn<typeof fetch>(async () => beaconAnswer)
+    expect(await inspectBridge('ws://127.0.0.1:43195/ext/bridge', request))
+      .toEqual({ code: 'connected', address: 'ws://127.0.0.1:51801/ext/bridge', pid: 4242 })
+  })
+  it('still rejects a direct answer that claims a different port without the beacon mark', async () => {
+    const request = vi.fn<typeof fetch>(async () => response(3080))
+    expect((await inspectBridge('ws://127.0.0.1:43195/ext/bridge', request)).code).toBe('invalid-response')
+  })
+  it('finds a random-port Desktop instance through its discovery beacon', async () => {
+    const request = vi.fn<typeof fetch>(async input => {
+      const port = Number(new URL(String(input)).port)
+      if (port !== 43195) throw new Error('offline')
+      return new Response(JSON.stringify({
+        wsUrl: 'ws://127.0.0.1:51801/ext/bridge', beacon: true, pid: 4242, startedAt: '2026-11-11T00:00:00.000Z',
+      }))
+    })
+    expect(await discoverLocalBridge(undefined, () => true, request))
+      .toEqual({ code: 'connected', address: 'ws://127.0.0.1:51801/ext/bridge', pid: 4242 })
+    expect(request.mock.calls.some(([url]) => Number(new URL(String(url)).port) === 43195)).toBe(true)
+  })
 })
